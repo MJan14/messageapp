@@ -2,7 +2,6 @@
 <html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
-    <!-- Fix for Mobile Viewport/Notch/Scroll -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
     <!-- PWA Settings -->
@@ -19,6 +18,9 @@
                 extend: {
                     colors: {
                         dark: { bg: '#0f172a', surface: '#1e293b', border: '#334155' }
+                    },
+                    boxShadow: {
+                        'up': '0 -4px 6px -1px rgba(0, 0, 0, 0.05)',
                     }
                 }
             }
@@ -26,12 +28,26 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Modern Scrollbar */
-        body { font-family: 'Inter', sans-serif; }
+        /* NATIVE APP FEEL CSS */
+        * {
+            -webkit-tap-highlight-color: transparent; /* No blue tap box */
+            user-select: none; /* Prevent text selection on UI */
+        }
+        
+        /* Allow text selection only in messages and inputs */
+        .selectable, input {
+            user-select: text;
+        }
+
+        body { 
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-font-smoothing: antialiased;
+            overscroll-behavior-y: none; /* No bounce */
+        }
+
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         
-        /* Animations */
         .reaction-menu { transform: scale(0); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-origin: bottom center; }
         .group:hover .reaction-menu { transform: scale(1); }
         .typing-dot { animation: bounce 1.4s infinite ease-in-out both; }
@@ -39,45 +55,73 @@
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         
-        /* Fix for iOS bottom bar */
-        .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
+        @keyframes pop-heart {
+            0% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+            50% { opacity: 1; transform: translate(-50%, -50%) scale(1.5); }
+            100% { opacity: 0; transform: translate(-50%, -100%) scale(1); }
+        }
+        .animate-pop { animation: pop-heart 0.8s ease-out forwards; }
+
+        /* iOS Safe Areas */
+        .safe-pt { padding-top: max(12px, env(safe-area-inset-top)); }
+        .safe-pb { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
         
-        /* Ensure layout works on all mobile browsers */
         .h-dvh { height: 100vh; height: 100dvh; }
+
+        /* Glassmorphism Header */
+        .glass-header {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+        }
+        .dark .glass-header {
+            background: rgba(15, 23, 42, 0.85);
+        }
     </style>
 </head>
-<!-- Changed h-screen to h-dvh for better mobile support -->
-<body class="bg-pink-50 dark:bg-slate-900 transition-colors duration-200 overflow-hidden h-dvh flex flex-col">
+<body class="bg-slate-50 dark:bg-slate-900 transition-colors duration-200 overflow-hidden h-dvh flex flex-col">
 
     <audio id="notify-sound" src="data:audio/wav;base64,UklGRl9vT1BXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"></audio>
 
-    <!-- ERROR BANNER (Shows if connection fails) -->
-    <div id="error-banner" class="hidden fixed top-0 left-0 w-full bg-red-500 text-white text-xs font-bold p-2 text-center z-[100]">
-        Connection Error. Check Firebase Authorized Domains.
+    <!-- ERROR BANNER -->
+    <div id="error-banner" class="hidden fixed top-0 left-0 w-full bg-red-500 text-white text-xs font-bold p-4 pt-12 text-center z-[100] shadow-lg cursor-pointer" onclick="this.classList.add('hidden')">
+        ⚠️ Connection Blocked! Click here to close.
+        <br><span class="font-normal opacity-90" id="error-text">Check Authorized Domains in Firebase.</span>
+    </div>
+
+    <!-- CALL MODAL -->
+    <div id="call-modal" class="hidden fixed inset-0 z-[100] bg-black flex flex-col animate-in fade-in duration-300">
+        <div class="bg-black/50 backdrop-blur-md text-white p-4 pt-safe-top flex justify-between items-center relative z-10">
+            <span class="font-bold flex items-center gap-2"><span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span> Video Call</span>
+            <button id="end-call-btn" class="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-full text-sm font-bold shadow-lg transition-transform active:scale-95">End</button>
+        </div>
+        <div id="jitsi-container" class="flex-1 w-full h-full relative bg-gray-900">
+            <div class="absolute inset-0 flex items-center justify-center text-gray-500">Connecting securely...</div>
+        </div>
     </div>
 
     <!-- LOGIN SCREEN -->
-    <div id="login-screen" class="hidden fixed inset-0 z-50 flex-col items-center justify-center bg-gradient-to-br from-pink-100 to-rose-200 dark:from-slate-800 dark:to-slate-900 p-4 transition-colors">
-        <div class="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-2 border-pink-100 dark:border-slate-700 relative transition-colors">
+    <div id="login-screen" class="hidden fixed inset-0 z-50 flex-col items-center justify-center bg-gradient-to-b from-pink-50 to-white dark:from-slate-900 dark:to-slate-800 p-6 transition-colors">
+        <div class="w-full max-w-sm text-center">
             
-            <div class="relative w-24 h-24 mx-auto mb-6 group cursor-pointer" onclick="document.getElementById('login-avatar-input').click()">
-                <div id="login-avatar-preview" class="w-full h-full rounded-full bg-pink-100 dark:bg-slate-700 overflow-hidden border-4 border-white dark:border-slate-600 shadow-md flex items-center justify-center">
-                    <svg class="w-10 h-10 text-pink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <div class="relative w-28 h-28 mx-auto mb-8 group cursor-pointer transition-transform active:scale-95" onclick="document.getElementById('login-avatar-input').click()">
+                <div id="login-avatar-preview" class="w-full h-full rounded-full bg-pink-100 dark:bg-slate-700 overflow-hidden border-[6px] border-white dark:border-slate-600 shadow-xl flex items-center justify-center">
+                    <svg class="w-12 h-12 text-pink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 </div>
-                <div class="absolute bottom-0 right-0 bg-blue-500 text-white p-1.5 rounded-full shadow-lg">
+                <div class="absolute bottom-1 right-1 bg-pink-500 text-white p-2 rounded-full shadow-lg border-2 border-white dark:border-slate-800">
                     <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                 </div>
                 <input type="file" id="login-avatar-input" accept="image/*" class="hidden">
             </div>
             
-            <h1 class="text-3xl font-bold text-gray-800 dark:text-white mb-2">Chat</h1>
-            <p class="text-gray-500 dark:text-gray-400 mb-6">Set a photo & name to join.</p>
+            <h1 class="text-4xl font-extrabold text-gray-800 dark:text-white mb-2 tracking-tight">Chat</h1>
+            <p class="text-gray-500 dark:text-gray-400 mb-10 text-lg">Your private space.</p>
             
             <div id="connection-status" class="mb-4 text-sm font-medium text-yellow-600 bg-yellow-50 py-2 px-3 rounded-lg hidden">Connecting...</div>
 
             <form id="login-form" class="space-y-4">
-                <input type="text" id="username-input" placeholder="Your Name" class="w-full px-4 py-3 border border-gray-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white dark:bg-slate-700 dark:text-white transition-all text-center font-bold" required>
-                <button type="submit" id="login-btn" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200 dark:shadow-none disabled:opacity-50 cursor-pointer">Start Chatting</button>
+                <input type="text" id="username-input" placeholder="Your Name" class="w-full px-6 py-4 text-lg border-none bg-white dark:bg-slate-700 shadow-lg rounded-2xl focus:ring-4 focus:ring-pink-100 dark:focus:ring-slate-600 text-gray-800 dark:text-white placeholder-gray-400 transition-all text-center font-semibold" required>
+                <button type="submit" id="login-btn" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold text-lg py-4 rounded-2xl shadow-xl shadow-pink-200 dark:shadow-none disabled:opacity-50 cursor-pointer active:scale-[0.98] transition-all">Start Chatting</button>
             </form>
         </div>
     </div>
@@ -86,73 +130,74 @@
     <div id="app-screen" class="hidden flex-col h-full w-full relative">
         
         <!-- Header -->
-        <header class="bg-white dark:bg-slate-800 px-4 py-3 pt-safe-top shadow-sm flex items-center justify-between z-40 border-b border-gray-200 dark:border-slate-700 relative">
+        <header class="glass-header px-4 py-3 safe-pt shadow-[0_1px_0_0_rgba(0,0,0,0.05)] dark:shadow-[0_1px_0_0_rgba(255,255,255,0.05)] flex items-center justify-between z-40 absolute top-0 w-full">
             <div class="flex items-center gap-3">
-                <div id="header-avatar" class="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden"></div>
+                <div id="header-avatar" class="w-9 h-9 rounded-full bg-gradient-to-tr from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold shadow-sm overflow-hidden text-sm"></div>
                 <div>
-                    <h2 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-1">Chat <span class="text-pink-500">❤️</span></h2>
-                    <p class="text-[10px] text-green-500 flex items-center gap-1 font-bold uppercase tracking-wider"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online</p>
+                    <h2 class="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-1 leading-tight">Chat <span class="text-pink-500 text-xs">❤️</span></h2>
+                    <p class="text-[10px] text-green-500 flex items-center gap-1 font-bold uppercase tracking-wider leading-tight"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2">
-                <button id="theme-toggle" class="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full cursor-pointer">
-                    <svg id="moon-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-                    <svg id="sun-icon" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+            <div class="flex items-center gap-1">
+                <button id="video-call-btn" class="p-2.5 text-pink-500 hover:bg-pink-50 dark:hover:bg-slate-700/50 rounded-full cursor-pointer transition-colors active:scale-90" title="Video Call">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
                 </button>
-                <button id="logout-btn" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-full cursor-pointer">
-                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <button id="theme-toggle" class="p-2.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700/50 rounded-full cursor-pointer active:scale-90 transition-transform">
+                    <svg id="moon-icon" class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+                    <svg id="sun-icon" class="w-6 h-6 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                </button>
+                <button id="logout-btn" class="p-2.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700/50 rounded-full cursor-pointer active:scale-90 transition-transform">
+                    <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>
             </div>
         </header>
 
         <!-- Messages Area -->
-        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-6 bg-pink-50 dark:bg-slate-900 relative scroll-smooth z-0">
-            <div id="messages-list" class="max-w-4xl mx-auto w-full space-y-4 pb-20"></div>
+        <div id="messages-container" class="flex-1 min-h-0 overflow-y-auto pt-24 pb-4 px-4 space-y-3 bg-slate-50 dark:bg-slate-900 relative scroll-smooth z-0">
+            <div id="messages-list" class="max-w-3xl mx-auto w-full space-y-3 pb-4"></div>
             <!-- Typing Indicator -->
-            <div id="typing-indicator" class="hidden absolute bottom-4 left-6 z-10 text-xs font-medium text-gray-500 dark:text-gray-400 bg-white/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-700 animate-pulse flex items-center gap-1">
-                <span id="typing-names">Someone</span> is typing <span class="flex gap-0.5"><span class="typing-dot">.</span><span class="typing-dot">.</span><span class="typing-dot">.</span></span>
+            <div id="typing-indicator" class="hidden absolute bottom-4 left-6 z-10 text-[10px] font-bold text-gray-400 dark:text-gray-500 bg-white/80 dark:bg-slate-800/80 px-3 py-1 rounded-full backdrop-blur-sm shadow-sm animate-pulse flex items-center gap-1">
+                <span id="typing-names">Someone</span> is typing...
             </div>
         </div>
 
-        <!-- GIF/Sticker Picker (Fixed Z-Index) -->
-        <div id="sticker-picker" class="hidden fixed bottom-20 left-4 right-4 md:left-auto md:right-20 md:w-80 h-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 z-[60] flex flex-col overflow-hidden">
-            <div class="p-2 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
-                <span class="text-xs font-bold text-gray-500 uppercase">Cute Stickers</span>
-                <button id="close-stickers" class="text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+        <!-- GIF/Sticker Picker -->
+        <div id="sticker-picker" class="hidden fixed bottom-20 left-4 right-4 md:left-auto md:right-20 md:w-80 h-64 bg-white dark:bg-slate-800 rounded-3xl shadow-2xl border border-gray-100 dark:border-slate-700 z-[60] flex flex-col overflow-hidden animate-in slide-in-from-bottom-10 duration-200">
+            <div class="p-3 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
+                <span class="text-xs font-bold text-gray-400 uppercase tracking-widest pl-2">Stickers</span>
+                <button id="close-stickers" class="p-1 text-gray-400 hover:text-gray-600 bg-gray-200 dark:bg-slate-800 rounded-full"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
             </div>
-            <div class="flex-1 overflow-y-auto p-2 grid grid-cols-3 gap-2" id="sticker-grid">
-                <!-- Stickers injected by JS -->
-            </div>
+            <div class="flex-1 overflow-y-auto p-2 grid grid-cols-3 gap-2" id="sticker-grid"></div>
         </div>
 
-        <!-- Input Area (Z-Index increased to 50) -->
-        <div class="bg-white dark:bg-slate-800 p-3 md:p-4 border-t border-gray-200 dark:border-slate-700 w-full z-50 safe-pb relative shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
-            <div class="max-w-4xl mx-auto w-full">
+        <!-- Input Area -->
+        <div class="bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg p-2 safe-pb border-t border-gray-100 dark:border-slate-800 w-full z-50 relative">
+            <div class="max-w-3xl mx-auto w-full">
                 <!-- Reply Banner -->
-                <div id="reply-preview" class="hidden flex items-center justify-between bg-pink-50 dark:bg-slate-700/50 p-2 px-3 rounded-t-xl border-l-4 border-pink-500 mb-2 text-xs">
-                    <div class="overflow-hidden"><p class="font-bold text-pink-500 mb-0.5">Replying to <span id="reply-to-name">User</span></p><p id="reply-to-text" class="text-gray-600 dark:text-gray-300 truncate">...</p></div>
-                    <button id="cancel-reply" class="p-1 hover:bg-black/5 rounded-full cursor-pointer"><svg class="w-3.5 h-3.5 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                <div id="reply-preview" class="hidden flex items-center justify-between bg-gray-50 dark:bg-slate-800/50 p-2 px-4 rounded-xl border-l-4 border-pink-500 mb-2 text-xs mx-1">
+                    <div class="overflow-hidden"><p class="font-bold text-pink-500 mb-0.5">Replying to <span id="reply-to-name">User</span></p><p id="reply-to-text" class="text-gray-600 dark:text-gray-400 truncate">...</p></div>
+                    <button id="cancel-reply" class="p-1 hover:bg-black/10 rounded-full cursor-pointer"><svg class="w-4 h-4 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
 
-                <div id="message-input-area" class="flex items-center gap-3 bg-gray-50 dark:bg-slate-900 p-2 sm:p-3 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:ring-4 focus-within:ring-pink-100 dark:focus-within:ring-pink-900/30 focus-within:bg-white dark:focus-within:bg-slate-900 transition-all shadow-inner relative z-50">
-                    <div class="flex items-center px-1 relative">
+                <div id="message-input-area" class="flex items-end gap-2 p-1">
+                    <div class="flex items-center gap-1 pb-1">
                         <input type="file" id="image-input" accept="image/*" class="hidden">
-                        <button id="image-btn" class="p-2 text-gray-400 hover:text-pink-500 transition-colors cursor-pointer" title="Photo"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
-                        <button id="sticker-btn" class="p-2 text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer" title="Stickers"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                        <button id="image-btn" class="p-2.5 text-gray-400 hover:text-pink-500 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-90" title="Photo"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
+                        <button id="sticker-btn" class="p-2.5 text-gray-400 hover:text-pink-500 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all active:scale-90" title="Stickers"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                     </div>
 
                     <!-- Text Input -->
-                    <div class="flex-1 bg-gray-100 dark:bg-slate-900 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:ring-2 focus-within:ring-pink-200 dark:focus-within:ring-slate-600 transition-all flex items-center min-h-[44px]">
-                        <input type="text" id="message-input" class="w-full bg-transparent border-none outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400 text-base px-4 py-2" placeholder="Message..." autocomplete="off">
+                    <div class="flex-1 bg-gray-100 dark:bg-slate-800 rounded-[20px] border border-transparent focus-within:border-pink-300 dark:focus-within:border-slate-600 focus-within:ring-2 focus-within:ring-pink-100 dark:focus-within:ring-slate-700 transition-all flex items-center min-h-[44px]">
+                        <input type="text" id="message-input" class="w-full bg-transparent border-none outline-none text-gray-800 dark:text-gray-100 placeholder-gray-400 text-[16px] px-4 py-2.5 leading-normal" placeholder="Message..." autocomplete="off">
                     </div>
 
                     <!-- Mic / Send -->
-                    <div class="pb-1">
-                        <button id="send-btn" type="button" class="hidden bg-pink-500 hover:bg-pink-600 text-white p-2.5 rounded-full shadow-lg transition-transform active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed cursor-pointer">
-                            <svg class="w-5 h-5 ml-0.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    <div class="pb-0.5">
+                        <button id="send-btn" type="button" class="hidden bg-pink-500 hover:bg-pink-600 text-white p-2.5 rounded-full shadow-lg shadow-pink-200 dark:shadow-none transition-transform active:scale-90 disabled:bg-gray-400 cursor-pointer">
+                            <svg class="w-5 h-5 ml-0.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
-                        <button id="mic-btn" type="button" class="bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 text-gray-600 dark:text-gray-300 p-2.5 rounded-full shadow transition-colors cursor-pointer">
-                            <svg class="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                        <button id="mic-btn" type="button" class="bg-gray-200 dark:bg-slate-800 hover:bg-gray-300 text-gray-500 dark:text-gray-400 p-2.5 rounded-full transition-transform active:scale-90 cursor-pointer">
+                            <svg class="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                         </button>
                     </div>
                 </div>
@@ -161,7 +206,7 @@
     </div>
 
     <!-- Loading -->
-    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-pink-50 dark:bg-slate-900"><svg class="w-16 h-16 text-pink-500 animate-pulse fill-current" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-white dark:bg-slate-900"><svg class="w-16 h-16 text-pink-500 animate-pulse fill-current" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -170,12 +215,12 @@
 
         // --- STICKER DATA ---
         const STICKERS = [
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/Mdf5HYOZgrem6vC2G0/giphy.gif",
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/13CoXDiaCcCoyk/giphy.gif",
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/R6gvnAxj2ISzJdbA63/giphy.gif",
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/MDJ9IbxxvDuQM/giphy.gif",
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/GCLlQnV7hPyKy0524L/giphy.gif",
-            "https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExbDN4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eHM3eDZnZ2Z4eCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9cw/26FLdmIp6wJr91JAI/giphy.gif"
+            "https://media.tenor.com/On7kvXhzml4AAAAi/loading-cat.gif", 
+            "https://media.tenor.com/fTTVgygGDh8AAAAi/kitty-cat-sandwich.gif", 
+            "https://media.tenor.com/bCfpS7y5i2cAAAAi/cat-chase.gif", 
+            "https://media.tenor.com/images/3151975e533c3997232230b027725964/tenor.gif",
+            "https://media.tenor.com/images/96c56432b0e6d974e3009559a72dfd92/tenor.gif",
+            "https://media.tenor.com/images/a6c6733222dd3a129d20d77c42730623/tenor.gif"
         ];
 
         const firebaseConfig = {
@@ -193,12 +238,12 @@
         const db = getFirestore(app);
         const appId = "love-chat";
 
-        // ELEMENTS
         const els = {
             loginScreen: document.getElementById('login-screen'),
             appScreen: document.getElementById('app-screen'),
             loadingScreen: document.getElementById('loading-screen'),
             errorBanner: document.getElementById('error-banner'),
+            errorText: document.getElementById('error-text'),
             loginForm: document.getElementById('login-form'),
             username: document.getElementById('username-input'),
             msgInput: document.getElementById('message-input'),
@@ -225,7 +270,11 @@
             logoutBtn: document.getElementById('logout-btn'),
             themeToggle: document.getElementById('theme-toggle'),
             moon: document.getElementById('moon-icon'),
-            sun: document.getElementById('sun-icon')
+            sun: document.getElementById('sun-icon'),
+            videoBtn: document.getElementById('video-call-btn'),
+            callModal: document.getElementById('call-modal'),
+            endCallBtn: document.getElementById('end-call-btn'),
+            jitsiContainer: document.getElementById('jitsi-container')
         };
 
         let state = {
@@ -238,7 +287,8 @@
             audioChunks: []
         };
 
-        // --- INIT ---
+        let isFirstRender = true;
+
         function initTheme() {
             if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
                 document.documentElement.classList.add('dark');
@@ -248,7 +298,6 @@
         }
         initTheme();
 
-        // --- AUTH ---
         onAuthStateChanged(auth, (u) => {
             state.user = u;
             els.loadingScreen.classList.add('hidden');
@@ -259,7 +308,7 @@
                 signInAnonymously(auth).catch(err => {
                     console.error(err);
                     els.errorBanner.classList.remove('hidden');
-                    els.errorBanner.textContent = "Auth Error: " + err.message;
+                    els.errorText.textContent = "Auth failed: " + err.message;
                 });
                 showLogin();
             }
@@ -277,24 +326,16 @@
             els.loginScreen.classList.remove('flex');
             els.appScreen.classList.remove('hidden');
             els.appScreen.classList.add('flex');
-            
-            // Render Header Avatar
-            if (state.avatar) {
-                els.headerAvatar.innerHTML = `<img src="${state.avatar}" class="w-full h-full object-cover">`;
-            } else {
-                els.headerAvatar.textContent = state.username.charAt(0).toUpperCase();
-            }
-
+            if (state.avatar) els.headerAvatar.innerHTML = `<img src="${state.avatar}" class="w-full h-full object-cover">`;
+            else els.headerAvatar.textContent = state.username.charAt(0).toUpperCase();
             if (Notification.permission === 'default') setTimeout(() => Notification.requestPermission(), 1000);
-            
             startMessageListener();
             startTypingListener();
         }
 
-        // --- LOGIN LOGIC ---
         els.avatarInput.addEventListener('change', async (e) => {
             if (e.target.files[0]) {
-                const base64 = await compressImage(e.target.files[0], 150); // Tiny thumbnail
+                const base64 = await compressImage(e.target.files[0], 150);
                 state.avatar = base64;
                 els.avatarPreview.innerHTML = `<img src="${base64}" class="w-full h-full object-cover">`;
             }
@@ -325,37 +366,59 @@
             els.sun.classList.toggle('hidden');
         });
 
-        // --- MESSAGING LOGIC ---
+        els.videoBtn.addEventListener('click', () => {
+            if (confirm("Start a video call?")) {
+                sendMessage('call', 'Started a video call');
+                startJitsiCall();
+            }
+        });
+
+        els.endCallBtn.addEventListener('click', () => {
+            els.callModal.classList.add('hidden');
+            els.jitsiContainer.innerHTML = '<div class="absolute inset-0 flex items-center justify-center text-gray-500">Connecting securely...</div>';
+        });
+
+        window.joinCall = () => startJitsiCall();
+
+        function startJitsiCall() {
+            els.callModal.classList.remove('hidden');
+            const roomName = `LoveChat_Room_${appId}`;
+            const domain = 'meet.jit.si';
+            setTimeout(() => {
+                els.jitsiContainer.innerHTML = "";
+                const iframe = document.createElement('iframe');
+                iframe.src = `https://${domain}/${roomName}#jitsi_meet_external_api_id=0&config.prejoinPageEnabled=false&interfaceConfig.TOOLBAR_BUTTONS=['microphone','camera','hangup','chat','tileview']`;
+                iframe.style.width = "100%";
+                iframe.style.height = "100%";
+                iframe.style.border = "0";
+                iframe.allow = "camera; microphone; display-capture; autoplay; clipboard-write";
+                els.jitsiContainer.appendChild(iframe);
+            }, 100);
+        }
+
         function startMessageListener() {
             const q = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
             onSnapshot(q, (snapshot) => {
-                els.errorBanner.classList.add('hidden'); // Clear error on success
-                const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.timestamp - b.timestamp);
-                
-                // Read Receipts & Notifications
+                els.errorBanner.classList.add('hidden');
+                const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === 'added') {
                         const data = change.doc.data();
-                        // Notify
                         if (data.sender !== state.username && (Date.now() - data.timestamp) < 5000) {
                             els.notifySound.play().catch(e=>{});
                             if (Notification.permission === "granted" && document.visibilityState === "hidden") {
-                                try { new Notification(data.sender, { body: data.text || 'Sent a media' }); } catch(e){}
+                                try { new Notification(data.sender, { body: data.text }); } catch(e){}
                             }
                         }
-                        // Mark as read if it's not mine
                         if (data.sender !== state.username && !data.read) {
                             updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chat_messages', change.doc.id), { read: true }).catch(e=>{});
                         }
                     }
                 });
-
                 renderMessages(msgs);
             }, (error) => {
-                console.error("Database Error:", error);
                 els.errorBanner.classList.remove('hidden');
-                if (error.code === 'permission-denied') els.errorBanner.textContent = "Access Denied. Check Firebase Rules.";
-                else els.errorBanner.textContent = "Connection Lost. Check Authorized Domains.";
+                els.errorText.textContent = "Connection Lost. " + error.message;
             });
         }
 
@@ -368,87 +431,139 @@
                 const date = new Date(msg.timestamp);
                 const dayStr = date.toLocaleDateString();
                 
-                // Date Separator
                 if (dayStr !== lastDate) {
                     let label = dayStr;
                     const today = new Date().toLocaleDateString();
                     if (dayStr === today) label = "Today";
-                    html += `<div class="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest my-4 opacity-70">${label}</div>`;
+                    html += `<div class="flex justify-center my-4"><span class="bg-gray-100 dark:bg-slate-800 text-gray-500 text-[10px] font-bold px-3 py-1 rounded-full uppercase tracking-wider">${label}</span></div>`;
                     lastDate = dayStr;
                 }
 
-                // Components
                 const avatarHtml = !isMe 
-                    ? `<div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden flex-shrink-0 mt-1 shadow-sm border border-white dark:border-slate-600">
+                    ? `<div class="w-8 h-8 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden flex-shrink-0 mt-auto mb-1 shadow-sm border border-white dark:border-slate-600">
                         ${msg.senderAvatar ? `<img src="${msg.senderAvatar}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-[10px] font-bold text-gray-500">${msg.sender[0]}</div>`}
                        </div>` 
                     : '';
                 
                 const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 
-                // Read Ticks
                 let ticks = '';
                 if (isMe) {
-                    const color = msg.read ? 'text-blue-400' : 'text-gray-300';
-                    if (msg.read) ticks = `<span class="text-blue-400 ml-1 flex -space-x-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`;
-                    else ticks = `<span class="text-gray-300 ml-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`;
+                    if (msg.read) ticks = `<span class="text-pink-500 ml-1 flex -space-x-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`;
+                    else ticks = `<span class="text-gray-400 ml-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>`;
                 }
 
-                // Content
-                let content = `<p>${msg.text}</p>`;
+                let content = `<p class="selectable">${msg.text}</p>`;
                 if (msg.deleted) content = `<p class="italic opacity-60 text-sm flex items-center gap-1"><svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg> Deleted</p>`;
-                else if (msg.type === 'image') content = `<img src="${msg.imageUrl}" class="rounded-lg max-h-64 w-auto border border-black/10">`;
+                else if (msg.type === 'image') content = `<img src="${msg.imageUrl}" class="rounded-lg max-h-64 w-auto border border-black/5 dark:border-white/10">`;
                 else if (msg.type === 'audio') content = `<audio controls src="${msg.audioUrl}" class="h-8 w-48"></audio>`;
+                else if (msg.type === 'call') content = `
+                    <div class="flex flex-col gap-2">
+                        <div class="font-bold flex items-center gap-2">📞 Video Call</div>
+                        <button onclick="window.joinCall()" class="bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-md hover:bg-green-600 transition-colors">Join Call</button>
+                    </div>
+                `;
 
-                // Reply
                 let reply = '';
                 if (msg.replyToText && !msg.deleted) {
-                    reply = `<div class="mb-1 text-[10px] opacity-70 border-l-2 border-current pl-2 truncate cursor-pointer"><b>${msg.replyToSender}</b>: ${msg.replyToText}</div>`;
+                    reply = `<div class="mb-1 text-[10px] opacity-70 border-l-2 border-current pl-2 truncate cursor-pointer bg-black/5 dark:bg-white/5 rounded-r p-1"><b>${msg.replyToSender}</b>: ${msg.replyToText}</div>`;
                 }
 
-                // Data Attributes for Actions
                 const encodedText = encodeURIComponent(msg.text || '');
                 const actionBtns = !msg.deleted ? `
-                    <div class="absolute -top-6 ${isMe ? 'right-0' : 'left-0'} hidden group-hover:flex bg-white dark:bg-slate-700 shadow rounded-full p-1 border dark:border-slate-600 gap-1 z-10">
-                        <button data-action="reply" data-id="${msg.id}" data-sender="${msg.sender}" data-type="${msg.type}" data-text="${encodedText}" class="p-1 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-full text-gray-500 cursor-pointer"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
-                        ${isMe ? `<button data-action="delete" data-id="${msg.id}" class="p-1 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full cursor-pointer"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+                    <div class="absolute -top-8 ${isMe ? 'right-0' : 'left-0'} hidden group-hover:flex bg-white dark:bg-slate-700 shadow-lg rounded-full p-1.5 border dark:border-slate-600 gap-1 z-10 reaction-menu-container scale-90 origin-bottom">
+                        <button data-action="reply" data-id="${msg.id}" data-sender="${msg.sender}" data-type="${msg.type}" data-text="${encodedText}" class="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-full text-gray-500 cursor-pointer"><svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
+                        <div class="relative group/react">
+                            <button class="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-full text-gray-500 cursor-pointer"><svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/react:flex bg-white dark:bg-slate-800 shadow-xl rounded-full p-2 gap-2 border border-gray-100 dark:border-slate-600 reaction-menu">
+                                <button data-action="react" data-id="${msg.id}" data-emoji="❤️" class="text-xl hover:scale-125 transition-transform">❤️</button>
+                                <button data-action="react" data-id="${msg.id}" data-emoji="😂" class="text-xl hover:scale-125 transition-transform">😂</button>
+                                <button data-action="react" data-id="${msg.id}" data-emoji="😢" class="text-xl hover:scale-125 transition-transform">😢</button>
+                                <button data-action="react" data-id="${msg.id}" data-emoji="😠" class="text-xl hover:scale-125 transition-transform">😠</button>
+                                <button data-action="react" data-id="${msg.id}" data-emoji="👍" class="text-xl hover:scale-125 transition-transform">👍</button>
+                            </div>
+                        </div>
+                        ${isMe ? `<button data-action="delete" data-id="${msg.id}" class="p-1.5 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full cursor-pointer"><svg class="w-4 h-4 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
                     </div>` : '';
 
+                let reactionsHtml = '';
+                if (!msg.deleted && msg.reactions) {
+                    const reactCounts = {};
+                    Object.values(msg.reactions).forEach(r => reactCounts[r] = (reactCounts[r] || 0) + 1);
+                    if (Object.keys(reactCounts).length > 0) {
+                        reactionsHtml = `<div class="flex flex-wrap gap-1 mt-1 justify-end absolute -bottom-3 right-0">`;
+                        for (const [emoji, count] of Object.entries(reactCounts)) reactionsHtml += `<span class="text-[10px] bg-white dark:bg-slate-700 border border-gray-100 dark:border-slate-600 px-1.5 py-0.5 rounded-full shadow-sm">${emoji} ${count > 1 ? count : ''}</span>`;
+                        reactionsHtml += `</div>`;
+                    }
+                }
+
                 html += `
-                    <div class="flex gap-2 ${isMe ? 'justify-end' : 'justify-start'} group mb-1">
+                    <div class="flex gap-2 ${isMe ? 'justify-end' : 'justify-start'} group mb-4 relative px-2">
                         ${!isMe ? avatarHtml : ''}
                         <div class="max-w-[75%] relative">
-                            <div class="px-4 py-2 rounded-2xl shadow-sm border ${isMe ? 'bg-pink-500 text-white border-pink-600 rounded-br-none' : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 border-gray-200 dark:border-slate-700 rounded-bl-none'}">
+                            <div class="px-3.5 py-2.5 rounded-[20px] shadow-sm text-[15px] leading-relaxed ${isMe ? 'bg-pink-500 text-white rounded-br-sm' : 'bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-100 rounded-bl-sm'} border border-transparent ${!isMe ? 'dark:border-slate-700' : ''}" data-msg-id="${msg.id}">
                                 ${reply}
                                 ${content}
-                                <div class="flex items-center justify-end gap-1 mt-1">
+                                <div class="flex items-center justify-end gap-1 mt-0.5">
                                     <span class="text-[9px] opacity-70">${timeStr}</span>
                                     ${ticks}
                                 </div>
                             </div>
+                            ${reactionsHtml}
                             ${actionBtns}
                         </div>
                     </div>
                 `;
             });
             els.msgList.innerHTML = html;
-            if(els.msgContainer.scrollTop + els.msgContainer.clientHeight >= els.msgContainer.scrollHeight - 100) {
+
+            if (isFirstRender) {
+                els.msgContainer.style.scrollBehavior = 'auto';
                 els.msgContainer.scrollTop = els.msgContainer.scrollHeight;
+                setTimeout(() => {
+                    els.msgContainer.scrollTop = els.msgContainer.scrollHeight;
+                    els.msgContainer.style.scrollBehavior = 'smooth';
+                }, 300);
+                isFirstRender = false;
+            } else {
+                if(els.msgContainer.scrollTop + els.msgContainer.clientHeight >= els.msgContainer.scrollHeight - 200) {
+                    els.msgContainer.scrollTop = els.msgContainer.scrollHeight;
+                }
             }
         }
 
-        // --- DELEGATED ACTIONS ---
+        async function sendReaction(id, emoji) {
+            if (!state.user) return;
+            try {
+                if (emoji === '❤️') {
+                    const bubble = document.querySelector(`[data-msg-id="${id}"]`);
+                    if (bubble) showHeartAnimation(bubble);
+                }
+                const msgRef = doc(db, 'artifacts', appId, 'public', 'data', 'chat_messages', id);
+                await updateDoc(msgRef, { [`reactions.${state.user.uid}`]: emoji });
+            } catch (e) {}
+        }
+
+        function showHeartAnimation(element) {
+            const heart = document.createElement('div');
+            heart.textContent = '❤️';
+            heart.className = 'fixed text-6xl pointer-events-none animate-pop z-50';
+            const rect = element.getBoundingClientRect();
+            heart.style.left = (rect.left + rect.width / 2) + 'px';
+            heart.style.top = (rect.top + rect.height / 2) + 'px';
+            document.body.appendChild(heart);
+            setTimeout(() => heart.remove(), 1000);
+        }
+
         els.msgList.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
             const action = btn.dataset.action;
-            if (!action) return;
-
+            
             if (action === 'reply') {
                 const text = decodeURIComponent(btn.dataset.text);
                 const type = btn.dataset.type;
-                const displayText = type === 'image' ? 'Photo' : (type === 'audio' ? 'Voice Note' : text);
-                
+                const displayText = type === 'image' ? 'Photo' : (type === 'audio' ? 'Voice Note' : (type === 'call' ? 'Call' : text));
                 state.replyingTo = { id: btn.dataset.id, sender: btn.dataset.sender, text: displayText };
                 els.replyPreview.classList.remove('hidden');
                 els.replyPreview.classList.add('flex');
@@ -456,12 +571,15 @@
                 els.replyText.textContent = displayText;
                 els.msgInput.focus();
             }
-            
-            if (action === 'delete') {
-                if(confirm("Delete message?")) {
-                    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chat_messages', btn.dataset.id), { deleted: true, text: 'Deleted', imageUrl: null, audioUrl: null });
-                }
+            if (action === 'delete' && confirm("Delete message?")) {
+                updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chat_messages', btn.dataset.id), { deleted: true, text: 'Deleted', imageUrl: null, audioUrl: null });
             }
+            if (action === 'react') sendReaction(btn.dataset.id, btn.dataset.emoji);
+        });
+
+        els.msgList.addEventListener('dblclick', (e) => {
+            const bubble = e.target.closest('[data-msg-id]');
+            if (bubble) sendReaction(bubble.dataset.msgId, '❤️');
         });
 
         els.cancelReply.addEventListener('click', () => {
@@ -470,12 +588,9 @@
             els.replyPreview.classList.remove('flex');
         });
 
-        // --- SENDING ---
         async function sendMessage(type, content) {
-            if (!state.user) { alert("Not connected to chat!"); return; }
-            
-            els.sendBtn.disabled = true; // Prevent double send
-            els.msgInput.disabled = true;
+            if (!state.user) { alert("Not connected!"); return; }
+            els.sendBtn.disabled = true; els.msgInput.disabled = true;
 
             const payload = {
                 sender: state.username,
@@ -485,12 +600,11 @@
                 read: false,
                 deleted: false,
                 type: type,
-                text: type === 'text' ? content : (type === 'image' ? 'Sent a photo' : 'Sent a voice note'),
+                text: type === 'text' ? content : (type === 'image' ? 'Sent a photo' : (type === 'audio' ? 'Sent a voice note' : 'Started a call')),
             };
             
             if (type === 'image') payload.imageUrl = content;
             if (type === 'audio') payload.audioUrl = content;
-
             if (state.replyingTo) {
                 payload.replyToId = state.replyingTo.id;
                 payload.replyToText = state.replyingTo.text;
@@ -503,14 +617,8 @@
             try {
                 await addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages'), payload);
                 updateTyping(false);
-            } catch (e) { 
-                console.error(e);
-                alert("Error sending message. Check connection."); 
-            } finally {
-                els.sendBtn.disabled = false;
-                els.msgInput.disabled = false;
-                els.msgInput.focus();
-            }
+            } catch (e) { alert("Send failed."); } 
+            finally { els.sendBtn.disabled = false; els.msgInput.disabled = false; els.msgInput.focus(); }
         }
 
         const handleSendAction = () => {
@@ -522,38 +630,40 @@
         };
 
         els.sendBtn.addEventListener('click', handleSendAction);
-        
-        els.msgInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                handleSendAction();
-            }
-        });
-
+        els.msgInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); handleSendAction(); } });
         els.msgInput.addEventListener('input', () => {
-            const hasText = els.msgInput.value.trim().length > 0;
-            toggleMic(!hasText);
+            toggleMic(!els.msgInput.value.trim());
             updateTyping(true);
             if (state.typingTimer) clearTimeout(state.typingTimer);
             state.typingTimer = setTimeout(() => updateTyping(false), 2000);
         });
 
         function toggleMic(showMic) {
-            if (showMic) {
-                els.micBtn.classList.remove('hidden');
-                els.sendBtn.classList.add('hidden');
-            } else {
-                els.micBtn.classList.add('hidden');
-                els.sendBtn.classList.remove('hidden');
-            }
+            if (showMic) { els.micBtn.classList.remove('hidden'); els.sendBtn.classList.add('hidden'); } 
+            else { els.micBtn.classList.add('hidden'); els.sendBtn.classList.remove('hidden'); }
         }
 
-        // --- VOICE RECORDER ---
-        els.micBtn.addEventListener('mousedown', startRecording);
-        els.micBtn.addEventListener('touchstart', startRecording);
-        els.micBtn.addEventListener('mouseup', stopRecording);
-        els.micBtn.addEventListener('touchend', stopRecording);
+        els.stickerBtn.addEventListener('click', () => {
+            els.stickerPicker.classList.remove('hidden');
+            if (!els.stickerGrid.innerHTML) els.stickerGrid.innerHTML = STICKERS.map(url => `<img src="${url}" class="w-full h-20 object-cover rounded-xl cursor-pointer hover:opacity-80 transition-opacity active:scale-95" onclick="window.sendSticker('${url}')">`).join('');
+        });
+        els.closeStickers.addEventListener('click', () => els.stickerPicker.classList.add('hidden'));
+        window.sendSticker = (url) => { sendMessage('image', url); els.stickerPicker.classList.add('hidden'); };
 
+        els.imgBtn.addEventListener('click', () => els.imgInput.click());
+        els.imgInput.addEventListener('change', async (e) => { if(e.target.files[0]) sendMessage('image', await compressImage(e.target.files[0])); });
+
+        async function updateTyping(isTyping) { if(state.username) try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'typing_status', state.username), { isTyping, timestamp: Date.now() }); } catch(e){} }
+        function startTypingListener() {
+            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'typing_status'), (snap) => {
+                const names = [];
+                snap.forEach(d => { if (d.id !== state.username && d.data().isTyping && (Date.now() - d.data().timestamp) < 3000) names.push(d.id); });
+                if (names.length) { els.typing.classList.remove('hidden'); els.typingName.textContent = names.join(', '); } else els.typing.classList.add('hidden');
+            });
+        }
+
+        els.micBtn.addEventListener('mousedown', startRecording); els.micBtn.addEventListener('touchstart', startRecording);
+        els.micBtn.addEventListener('mouseup', stopRecording); els.micBtn.addEventListener('touchend', stopRecording);
         async function startRecording(e) {
             e.preventDefault();
             try {
@@ -566,64 +676,17 @@
                 els.msgInput.placeholder = "Recording...";
             } catch (err) { alert("Mic permission denied"); }
         }
-
         function stopRecording(e) {
             e.preventDefault();
             if (!state.mediaRecorder || state.mediaRecorder.state === 'inactive') return;
             state.mediaRecorder.stop();
             els.micBtn.classList.remove('bg-red-500', 'text-white', 'animate-pulse');
             els.msgInput.placeholder = "Message...";
-            
             state.mediaRecorder.onstop = async () => {
                 const blob = new Blob(state.audioChunks, { type: 'audio/webm' });
-                // Check size (1MB limit)
-                if (blob.size > 800000) { alert("Voice note too long!"); return; }
-                const base64 = await blobToBase64(blob);
-                sendMessage('audio', base64);
+                if (blob.size > 800000) { alert("Too long!"); return; }
+                sendMessage('audio', await blobToBase64(blob));
             };
-        }
-
-        // --- STICKERS ---
-        els.stickerBtn.addEventListener('click', () => {
-            els.stickerPicker.classList.remove('hidden');
-            if (!els.stickerGrid.innerHTML) {
-                els.stickerGrid.innerHTML = STICKERS.map(url => 
-                    `<img src="${url}" class="w-full h-20 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity" onclick="window.sendSticker('${url}')">`
-                ).join('');
-            }
-        });
-        els.closeStickers.addEventListener('click', () => els.stickerPicker.classList.add('hidden'));
-        
-        window.sendSticker = (url) => {
-            sendMessage('image', url);
-            els.stickerPicker.classList.add('hidden');
-        };
-
-        // --- UTILS ---
-        els.imgBtn.addEventListener('click', () => els.imgInput.click());
-        els.imgInput.addEventListener('change', async (e) => {
-            if(e.target.files[0]) {
-                const base64 = await compressImage(e.target.files[0]);
-                sendMessage('image', base64);
-            }
-        });
-
-        async function updateTyping(isTyping) {
-            if (!state.username) return;
-            try { await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'typing_status', state.username), { isTyping, timestamp: Date.now() }); } catch(e){}
-        }
-
-        function startTypingListener() {
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'typing_status'), (snap) => {
-                const names = [];
-                snap.forEach(d => {
-                    if (d.id !== state.username && d.data().isTyping && (Date.now() - d.data().timestamp) < 3000) names.push(d.id);
-                });
-                if (names.length) {
-                    els.typing.classList.remove('hidden');
-                    els.typingName.textContent = names.join(', ');
-                } else els.typing.classList.add('hidden');
-            });
         }
 
         function compressImage(file, size=800) {
@@ -636,8 +699,7 @@
                     img.onload = () => {
                         const canvas = document.createElement('canvas');
                         let w = img.width, h = img.height;
-                        if (w > h) { if (w > size) { h *= size/w; w = size; } } 
-                        else { if (h > size) { w *= size/h; h = size; } }
+                        if (w > h) { if (w > size) { h *= size/w; w = size; } } else { if (h > size) { w *= size/h; h = size; } }
                         canvas.width = w; canvas.height = h;
                         canvas.getContext('2d').drawImage(img, 0, 0, w, h);
                         resolve(canvas.toDataURL('image/jpeg', 0.8));
@@ -645,14 +707,7 @@
                 };
             });
         }
-
-        function blobToBase64(blob) {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onloadend = () => resolve(reader.result);
-                reader.readAsDataURL(blob);
-            });
-        }
+        function blobToBase64(blob) { return new Promise((resolve) => { const reader = new FileReader(); reader.onloadend = () => resolve(reader.result); reader.readAsDataURL(blob); }); }
     </script>
 </body>
 </html>
