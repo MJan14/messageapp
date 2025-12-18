@@ -2,7 +2,20 @@
 <html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <!-- iOS Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Chat">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/134/134914.png">
+
+    <!-- Android/Samsung PWA Settings -->
+    <meta name="theme-color" content="#fdf2f8">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- Embedded Manifest for Android Installation -->
+    <link rel="manifest" href='data:application/manifest+json,{"name":"Chat","short_name":"Chat","start_url":".","display":"standalone","background_color":"#fdf2f8","theme_color":"#fdf2f8","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/134/134914.png","sizes":"512x512","type":"image/png"}]}'>
+
     <title>Chat</title>
     <!-- Tailwind CSS with Dark Mode Config -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -48,6 +61,9 @@
             0%, 80%, 100% { transform: scale(0); }
             40% { transform: scale(1); }
         }
+        
+        /* IOS Safe Area Padding */
+        .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
     </style>
 </head>
 <body class="bg-pink-50 dark:bg-slate-900 transition-colors duration-200 overflow-hidden h-screen flex flex-col">
@@ -90,7 +106,7 @@
     <div id="app-screen" class="hidden flex-col h-full w-full">
         
         <!-- Header -->
-        <header class="bg-white dark:bg-slate-800 px-6 py-4 shadow-sm flex items-center justify-between z-20 border-b border-gray-200 dark:border-slate-700 transition-colors">
+        <header class="bg-white dark:bg-slate-800 px-6 py-4 pt-safe-top shadow-sm flex items-center justify-between z-20 border-b border-gray-200 dark:border-slate-700 transition-colors">
             <div class="flex items-center gap-4">
                 <div id="avatar-display" class="bg-gradient-to-tr from-pink-400 to-rose-500 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
                     <!-- Initial -->
@@ -139,7 +155,7 @@
         </div>
 
         <!-- Input Area -->
-        <div class="bg-white dark:bg-slate-800 p-4 md:p-6 border-t border-gray-200 dark:border-slate-700 w-full z-20 transition-colors">
+        <div class="bg-white dark:bg-slate-800 p-4 md:p-6 border-t border-gray-200 dark:border-slate-700 w-full z-20 transition-colors safe-pb">
             <div class="max-w-6xl mx-auto w-full">
                 
                 <!-- Reply Preview Banner -->
@@ -309,6 +325,14 @@
             appScreen.classList.add('flex');
             avatarDisplay.textContent = username.charAt(0).toUpperCase();
             
+            // Request Notification Permission on first load of app screen
+            if (Notification.permission === 'default') {
+                // We add a slight delay so it doesn't pop up instantly on page load
+                setTimeout(() => {
+                    Notification.requestPermission();
+                }, 1000);
+            }
+
             startMessageListener();
             startTypingListener();
         }
@@ -338,13 +362,27 @@
                 const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                 msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
                 
-                // Play sound if new message from someone else
+                // Play sound & Notify if new message from someone else
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === "added") {
                         const data = change.doc.data();
                         if (data.sender !== username && (Date.now() - data.timestamp) < 5000) {
-                            // Only play if message is recent (prevents sounds on load)
+                            
+                            // 1. Play Sound
                             notifySound.play().catch(e => console.log("Audio play blocked", e));
+                            
+                            // 2. Show System Notification (if supported & allowed)
+                            if (Notification.permission === "granted" && document.visibilityState === "hidden") {
+                                // Try catch to prevent crashes on unsupported browsers
+                                try {
+                                    new Notification(`New message from ${data.sender}`, {
+                                        body: data.type === 'image' ? 'Sent a photo' : data.text,
+                                        icon: 'https://cdn-icons-png.flaticon.com/512/134/134914.png' // Generic chat icon
+                                    });
+                                } catch (e) {
+                                    console.log("Notification error", e);
+                                }
+                            }
                         }
                     }
                 });
