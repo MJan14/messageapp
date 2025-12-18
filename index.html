@@ -1,335 +1,362 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  onAuthStateChanged,
-  signInWithCustomToken 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  addDoc, 
-  onSnapshot 
-} from 'firebase/firestore';
-import { Send, Heart, User, Smile, Image as ImageIcon, AlertCircle } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoveChat</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        /* Smooth scrolling for chat */
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="bg-slate-100 overflow-hidden h-screen flex flex-col">
 
-// --- Firebase Configuration ---
-// We use a fallback logic: Use environment config if available (for preview), 
-// otherwise use your hardcoded project keys (for your published site).
-const userConfig = {
-  apiKey: "AIzaSyCuDu_yuMRmXTi7N3tdMJckLnuHyQ2tcsc",
-  authDomain: "messageapp-98066.firebaseapp.com",
-  projectId: "messageapp-98066",
-  storageBucket: "messageapp-98066.firebasestorage.app",
-  messagingSenderId: "647948804998",
-  appId: "1:647948804998:web:bd0eebd3f97f9853f18207",
-  measurementId: "G-H096MFHK6K"
-};
-
-const firebaseConfig = typeof __firebase_config !== 'undefined' 
-  ? JSON.parse(__firebase_config) 
-  : userConfig;
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'love-chat';
-
-export default function App() {
-  const [user, setUser] = useState(null);
-  const [authError, setAuthError] = useState(null);
-  const [username, setUsername] = useState(() => localStorage.getItem('lovechat_username') || '');
-  const [hasJoined, setHasJoined] = useState(!!localStorage.getItem('lovechat_username'));
-  const [messages, setMessages] = useState([]);
-  const [inputText, setInputText] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-  
-  const messagesEndRef = useRef(null);
-  const fileInputRef = useRef(null);
-
-  // 1. Mandatory Auth Pattern (Rule 3)
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Auth error:", error);
-        // Specifically handle the configuration error the user is seeing
-        if (error.code === 'auth/configuration-not-found') {
-          setAuthError("Anonymous sign-in is not enabled. Go to your Firebase Console > Authentication > Sign-in method and enable 'Anonymous'.");
-        } else {
-          setAuthError(error.message);
-        }
-      }
-    };
-
-    initAuth();
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // 2. Data Fetching - Guarded by user check (Rule 3)
-  useEffect(() => {
-    if (!user) return;
-
-    const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
-
-    const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
-      const msgs = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      // Sort in memory (Rule 2)
-      msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      setMessages(msgs);
-    }, (error) => {
-      console.error("Firestore error:", error);
-    });
-
-    return () => unsubscribe();
-  }, [user]);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleJoin = (e) => {
-    e.preventDefault();
-    if (!username.trim()) return;
-    localStorage.setItem('lovechat_username', username);
-    setHasJoined(true);
-  };
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!inputText.trim() || !user) return;
-
-    const textToSend = inputText;
-    setInputText('');
-
-    try {
-      const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
-      await addDoc(messagesRef, {
-        text: textToSend,
-        sender: username,
-        senderId: user.uid,
-        timestamp: Date.now(),
-        type: 'text'
-      });
-    } catch (error) {
-      console.error("Send error:", error);
-      setInputText(textToSend);
-    }
-  };
-
-  const compressImage = (file) => {
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-          const MAX_DIMENSION = 1000;
-          if (width > height) {
-            if (width > MAX_DIMENSION) {
-              height *= MAX_DIMENSION / width;
-              width = MAX_DIMENSION;
-            }
-          } else {
-            if (height > MAX_DIMENSION) {
-              width *= MAX_DIMENSION / height;
-              height = MAX_DIMENSION;
-            }
-          }
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.8));
-        };
-      };
-    });
-  };
-
-  const handleImageUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
-    setIsUploading(true);
-    try {
-      const base64Image = await compressImage(file);
-      const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
-      await addDoc(messagesRef, {
-        text: 'Sent a photo',
-        imageUrl: base64Image,
-        sender: username,
-        senderId: user.uid,
-        timestamp: Date.now(),
-        type: 'image'
-      });
-    } catch (error) {
-      console.error("Upload error:", error);
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '';
-    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
-
-  // Auth Error UI
-  if (authError) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-red-50 p-6">
-        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md text-center border-2 border-red-100">
-          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-800 mb-2">Setup Required</h2>
-          <p className="text-gray-600 mb-6 leading-relaxed">{authError}</p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-900 transition-all"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-pink-50">
-        <Heart className="w-12 h-12 text-pink-500 animate-pulse" />
-      </div>
-    );
-  }
-
-  if (!hasJoined) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-pink-100 to-purple-200 p-4">
-        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-2 border-pink-100">
-          <div className="bg-pink-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Heart className="w-8 h-8 text-pink-500 fill-current" />
-          </div>
-          <h1 className="text-3xl font-bold text-gray-800 mb-2">LoveChat</h1>
-          <p className="text-gray-500 mb-8">A private space for just the two of us.</p>
-          <form onSubmit={handleJoin} className="space-y-4">
-            <div className="relative">
-              <User className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
-              <input
-                type="text"
-                placeholder="What's your name?"
-                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
+    <!-- LOGIN SCREEN (Hidden by default, shown via JS) -->
+    <div id="login-screen" class="hidden fixed inset-0 z-50 flex-col items-center justify-center bg-gradient-to-br from-pink-100 to-purple-200 p-4">
+        <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-2 border-pink-100">
+            <div class="bg-pink-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                <!-- Heart Icon -->
+                <svg class="w-8 h-8 text-pink-500 fill-current" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5 4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
             </div>
-            <button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200">
-              Start Chatting
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden font-sans">
-      <header className="bg-white px-6 py-4 shadow-sm flex items-center justify-between z-20 border-b border-gray-200">
-        <div className="flex items-center gap-4">
-          <div className="bg-gradient-to-tr from-pink-400 to-purple-500 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
-            {username.charAt(0).toUpperCase()}
-          </div>
-          <div>
-            <h2 className="font-bold text-xl text-gray-800 flex items-center gap-2">
-              LoveChat <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
-            </h2>
-            <p className="text-xs text-green-500 flex items-center gap-1 font-medium">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-              Secure Connected
-            </p>
-          </div>
-        </div>
-        <button 
-          onClick={() => {
-            localStorage.removeItem('lovechat_username');
-            setHasJoined(false);
-            setUsername('');
-          }}
-          className="px-4 py-2 text-sm font-semibold text-gray-500 hover:text-red-500 bg-gray-100 hover:bg-red-50 rounded-lg transition-all"
-        >
-          Logout
-        </button>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50 relative">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none select-none flex flex-wrap items-center justify-center gap-20 overflow-hidden">
-           {[...Array(15)].map((_, i) => <Heart key={i} size={100} />)}
-        </div>
-
-        <div className="max-w-6xl mx-auto w-full space-y-6 relative z-10">
-          {messages.map((msg) => {
-            const isMe = msg.sender === username;
-            return (
-              <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
-                <div className={`max-w-[90%] sm:max-w-[70%] md:max-w-[60%] px-5 py-3 rounded-2xl shadow-md relative ${isMe ? 'bg-pink-500 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-200'}`}>
-                  {!isMe && <p className="text-xs text-pink-500 font-bold mb-1.5 uppercase tracking-wider">{msg.sender}</p>}
-                  {msg.type === 'image' ? (
-                    <img src={msg.imageUrl} alt="Sent photo" className="rounded-xl max-h-[450px] w-full object-contain bg-black/5 mb-2" />
-                  ) : (
-                    <p className="break-words leading-relaxed text-[15px] sm:text-[16px]">{msg.text}</p>
-                  )}
-                  <div className={`text-[10px] mt-2 flex items-center justify-end font-medium ${isMe ? 'text-pink-100' : 'text-gray-400'}`}>
-                    {formatTime(msg.timestamp)}
-                  </div>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">LoveChat</h1>
+            <p class="text-gray-500 mb-8">A private space for just the two of us.</p>
+            
+            <form id="login-form" class="space-y-4">
+                <div class="relative">
+                    <div class="absolute left-3 top-3 text-gray-400">
+                        <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    </div>
+                    <input type="text" id="username-input" placeholder="What's your name?" class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all" required>
                 </div>
-              </div>
-            );
-          })}
-          <div ref={messagesEndRef} />
+                <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200">
+                    Start Chatting
+                </button>
+            </form>
         </div>
-      </div>
-
-      <div className="bg-white p-4 md:p-6 border-t border-gray-200 w-full z-20">
-        <div className="max-w-6xl mx-auto w-full">
-          <form onSubmit={handleSend} className="flex items-center gap-3 bg-gray-100 p-2 sm:p-3 rounded-2xl border border-gray-200 focus-within:ring-4 focus-within:ring-pink-100 focus-within:bg-white transition-all shadow-inner">
-            <div className="flex items-center px-1">
-               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageUpload} className="hidden" />
-               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="p-2 text-gray-400 hover:text-pink-500 hover:bg-pink-50 rounded-xl transition-all disabled:opacity-50">
-                 <ImageIcon className={`w-6 h-6 ${isUploading ? 'animate-pulse text-pink-500' : ''}`} />
-               </button>
-            </div>
-            <input
-              type="text"
-              className="flex-1 bg-transparent border-none focus:ring-0 text-gray-800 placeholder-gray-400 text-base py-2"
-              placeholder={isUploading ? "Uploading..." : "Type a message..."}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              disabled={isUploading}
-            />
-            <button type="submit" disabled={!inputText.trim() || isUploading} className="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 text-white p-3 rounded-xl transition-all shadow-lg flex items-center gap-2 group">
-              <span className="hidden sm:inline font-bold px-1">Send</span>
-              <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-            </button>
-          </form>
-        </div>
-      </div>
     </div>
-  );
-}
+
+    <!-- MAIN APP (Hidden by default) -->
+    <div id="app-screen" class="hidden flex-col h-full w-full">
+        
+        <!-- Header -->
+        <header class="bg-white px-6 py-4 shadow-sm flex items-center justify-between z-20 border-b border-gray-200">
+            <div class="flex items-center gap-4">
+                <div id="avatar-display" class="bg-gradient-to-tr from-pink-400 to-purple-500 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
+                    <!-- Initial goes here -->
+                </div>
+                <div>
+                    <h2 class="font-bold text-xl text-gray-800 flex items-center gap-2">
+                        LoveChat 
+                        <svg class="w-5 h-5 text-pink-500 fill-pink-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5 4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+                    </h2>
+                    <p class="text-xs text-green-500 flex items-center gap-1 font-medium">
+                        <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                        Secure Connected
+                    </p>
+                </div>
+            </div>
+            <button id="logout-btn" class="px-4 py-2 text-sm font-semibold text-gray-500 hover:text-red-500 bg-gray-100 hover:bg-red-50 rounded-lg transition-all">
+                Logout
+            </button>
+        </header>
+
+        <!-- Messages Area -->
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50 relative scroll-smooth">
+            <!-- Background Hearts -->
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none select-none flex flex-wrap items-center justify-center gap-20 overflow-hidden z-0">
+               <!-- Repeated via JS or just CSS pattern -->
+               <svg class="w-24 h-24" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5 4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+            </div>
+
+            <!-- Messages List -->
+            <div id="messages-list" class="max-w-6xl mx-auto w-full space-y-6 relative z-10">
+                <!-- Messages will be inserted here by JS -->
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="bg-white p-4 md:p-6 border-t border-gray-200 w-full z-20">
+            <div class="max-w-6xl mx-auto w-full">
+                <form id="message-form" class="flex items-center gap-3 bg-gray-100 p-2 sm:p-3 rounded-2xl border border-gray-200 focus-within:ring-4 focus-within:ring-pink-100 focus-within:bg-white transition-all shadow-inner">
+                    
+                    <div class="flex items-center px-1 relative">
+                        <input type="file" id="image-input" accept="image/*" class="hidden">
+                        <button type="button" id="image-btn" class="p-2 text-gray-400 hover:text-pink-500 hover:bg-pink-50 rounded-xl transition-all">
+                            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        </button>
+                    </div>
+
+                    <input type="text" id="message-input" class="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-400 text-base py-2" placeholder="Type a message..." autocomplete="off">
+
+                    <button type="submit" id="send-btn" disabled class="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 disabled:cursor-not-allowed text-white p-3 rounded-xl transition-all shadow-lg flex items-center gap-2 group">
+                        <span class="hidden sm:inline font-bold px-1">Send</span>
+                        <svg class="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="fixed inset-0 z-50 flex items-center justify-center bg-pink-50">
+        <svg class="w-16 h-16 text-pink-500 animate-pulse fill-current" viewBox="0 0 24 24"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5 4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+    </div>
+
+    <!-- Logic -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, addDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // YOUR CONFIGURATION
+        const firebaseConfig = {
+            apiKey: "AIzaSyCuDu_yuMRmXTi7N3tdMJckLnuHyQ2tcsc",
+            authDomain: "messageapp-98066.firebaseapp.com",
+            projectId: "messageapp-98066",
+            storageBucket: "messageapp-98066.firebasestorage.app",
+            messagingSenderId: "647948804998",
+            appId: "1:647948804998:web:bd0eebd3f97f9853f18207",
+            measurementId: "G-H096MFHK6K"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const appId = "love-chat";
+
+        // DOM Elements
+        const loginScreen = document.getElementById('login-screen');
+        const appScreen = document.getElementById('app-screen');
+        const loadingScreen = document.getElementById('loading-screen');
+        const loginForm = document.getElementById('login-form');
+        const usernameInput = document.getElementById('username-input');
+        const messageForm = document.getElementById('message-form');
+        const messageInput = document.getElementById('message-input');
+        const messagesList = document.getElementById('messages-list');
+        const messagesContainer = document.getElementById('messages-container');
+        const avatarDisplay = document.getElementById('avatar-display');
+        const logoutBtn = document.getElementById('logout-btn');
+        const sendBtn = document.getElementById('send-btn');
+        const imageBtn = document.getElementById('image-btn');
+        const imageInput = document.getElementById('image-input');
+
+        let currentUser = null;
+        let username = localStorage.getItem('lovechat_username') || '';
+
+        // Auth State Listener
+        onAuthStateChanged(auth, (user) => {
+            currentUser = user;
+            loadingScreen.classList.add('hidden');
+            
+            if (user && username) {
+                showApp();
+            } else {
+                showLogin();
+            }
+        });
+
+        // Sign In Immediately
+        signInAnonymously(auth).catch(err => {
+            console.error(err);
+            alert("Could not connect. Check your Firebase Anonymous Auth settings.");
+        });
+
+        function showLogin() {
+            loginScreen.classList.remove('hidden');
+            loginScreen.classList.add('flex');
+            appScreen.classList.add('hidden');
+            appScreen.classList.remove('flex');
+        }
+
+        function showApp() {
+            loginScreen.classList.add('hidden');
+            loginScreen.classList.remove('flex');
+            appScreen.classList.remove('hidden');
+            appScreen.classList.add('flex');
+            
+            // Set Avatar
+            avatarDisplay.textContent = username.charAt(0).toUpperCase();
+            
+            // Start Listening for Messages
+            startMessageListener();
+        }
+
+        // Login Handler
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = usernameInput.value.trim();
+            if (val) {
+                username = val;
+                localStorage.setItem('lovechat_username', username);
+                if (currentUser) showApp();
+            }
+        });
+
+        // Logout Handler
+        logoutBtn.addEventListener('click', () => {
+            localStorage.removeItem('lovechat_username');
+            username = '';
+            showLogin();
+        });
+
+        // Real-time Messages
+        function startMessageListener() {
+            const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+            
+            onSnapshot(messagesRef, (snapshot) => {
+                const msgs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+                renderMessages(msgs);
+            });
+        }
+
+        function renderMessages(msgs) {
+            messagesList.innerHTML = '';
+            
+            if (msgs.length === 0) {
+                messagesList.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-48 text-gray-400 space-y-2 opacity-50">
+                        <p>No messages yet. Say hi!</p>
+                    </div>
+                `;
+                return;
+            }
+
+            msgs.forEach(msg => {
+                const isMe = msg.sender === username;
+                const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                
+                const div = document.createElement('div');
+                div.className = `flex w-full ${isMe ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`;
+                
+                let contentHtml = '';
+                if (msg.type === 'image') {
+                    contentHtml = `<img src="${msg.imageUrl}" class="rounded-xl max-h-[450px] w-full object-contain bg-black/5 mb-2" alt="photo">`;
+                } else {
+                    contentHtml = `<p class="break-words leading-relaxed text-[15px] sm:text-[16px]">${msg.text}</p>`;
+                }
+
+                div.innerHTML = `
+                    <div class="max-w-[85%] sm:max-w-[70%] md:max-w-[60%] px-5 py-3 rounded-2xl shadow-md relative ${
+                        isMe 
+                        ? 'bg-pink-500 text-white rounded-br-none' 
+                        : 'bg-white text-gray-800 rounded-bl-none border border-gray-200'
+                    }">
+                        ${!isMe ? `<p class="text-xs text-pink-500 font-bold mb-1.5 uppercase tracking-wider">${msg.sender}</p>` : ''}
+                        ${contentHtml}
+                        <div class="text-[10px] mt-2 flex items-center justify-end font-medium ${isMe ? 'text-pink-100' : 'text-gray-400'}">
+                            ${time}
+                        </div>
+                    </div>
+                `;
+                messagesList.appendChild(div);
+            });
+
+            // Scroll to bottom
+            setTimeout(() => {
+                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            }, 100);
+        }
+
+        // Send Message
+        messageInput.addEventListener('input', () => {
+            sendBtn.disabled = !messageInput.value.trim();
+        });
+
+        messageForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = messageInput.value.trim();
+            if (!text || !currentUser) return;
+
+            messageInput.value = '';
+            sendBtn.disabled = true;
+
+            try {
+                const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+                await addDoc(messagesRef, {
+                    text: text,
+                    sender: username,
+                    senderId: currentUser.uid,
+                    timestamp: Date.now(),
+                    type: 'text'
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Error sending message");
+                messageInput.value = text;
+            }
+        });
+
+        // Image Upload
+        imageBtn.addEventListener('click', () => imageInput.click());
+        
+        imageInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !currentUser) return;
+
+            // Simple "Uploading" state
+            messageInput.placeholder = "Uploading photo...";
+            messageInput.disabled = true;
+
+            try {
+                const base64 = await compressImage(file);
+                const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+                await addDoc(messagesRef, {
+                    text: 'Sent a photo',
+                    imageUrl: base64,
+                    sender: username,
+                    senderId: currentUser.uid,
+                    timestamp: Date.now(),
+                    type: 'image'
+                });
+            } catch (err) {
+                console.error(err);
+                alert("Failed to send image");
+            } finally {
+                messageInput.placeholder = "Type a message...";
+                messageInput.disabled = false;
+                imageInput.value = '';
+            }
+        });
+
+        function compressImage(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        const MAX_DIMENSION = 1000;
+                        if (width > height) {
+                            if (width > MAX_DIMENSION) {
+                                height *= MAX_DIMENSION / width;
+                                width = MAX_DIMENSION;
+                            }
+                        } else {
+                            if (height > MAX_DIMENSION) {
+                                width *= MAX_DIMENSION / height;
+                                height = MAX_DIMENSION;
+                            }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    };
+                };
+            });
+        }
+    </script>
+</body>
+</html>
