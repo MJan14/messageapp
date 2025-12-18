@@ -3,8 +3,7 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  onAuthStateChanged,
-  signInWithCustomToken 
+  onAuthStateChanged
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -14,14 +13,26 @@ import {
   doc,
   deleteDoc
 } from 'firebase/firestore';
-import { Send, Heart, User, Trash2, Smile } from 'lucide-react';
+import { Send, Heart, User, Trash2, Smile, Image as ImageIcon } from 'lucide-react';
 
-// --- Firebase Configuration & Initialization ---
-const firebaseConfig = JSON.parse(__firebase_config);
+// --- YOUR Firebase Configuration ---
+const firebaseConfig = {
+  apiKey: "AIzaSyCuDu_yuMRmXTi7N3tdMJckLnuHyQ2tcsc",
+  authDomain: "messageapp-98066.firebaseapp.com",
+  projectId: "messageapp-98066",
+  storageBucket: "messageapp-98066.firebasestorage.app",
+  messagingSenderId: "647948804998",
+  appId: "1:647948804998:web:bd0eebd3f97f9853f18207",
+  measurementId: "G-H096MFHK6K"
+};
+
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+// We use a fixed ID here since it's your own private database now
+const appId = 'love-chat';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -30,18 +41,17 @@ export default function App() {
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isUploading, setIsUploading] = useState(false);
   
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // 1. Authentication Setup
   useEffect(() => {
     const initAuth = async () => {
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
+        // Simple anonymous sign-in for your own project
+        await signInAnonymously(auth);
       } catch (error) {
         console.error("Auth error:", error);
       }
@@ -60,20 +70,16 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
 
-    // Using the public data path so both users can see the same messages
+    // We store messages in 'artifacts/love-chat/public/data/chat_messages'
     const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
 
-    // Subscribe to updates
     const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
       const msgs = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
       
-      // Sort in memory (Rule 2: Avoid complex Firestore queries)
-      // Sorting by timestamp ascending
       msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-      
       setMessages(msgs);
     }, (error) => {
       console.error("Error fetching messages:", error);
@@ -87,7 +93,6 @@ export default function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle Joining
   const handleJoin = (e) => {
     e.preventDefault();
     if (!username.trim()) return;
@@ -95,13 +100,12 @@ export default function App() {
     setHasJoined(true);
   };
 
-  // Handle Sending
   const handleSend = async (e) => {
     e.preventDefault();
     if (!inputText.trim() || !user) return;
 
     const textToSend = inputText;
-    setInputText(''); // Clear immediately for better UX
+    setInputText('');
 
     try {
       const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
@@ -114,17 +118,82 @@ export default function App() {
       });
     } catch (error) {
       console.error("Error sending message:", error);
-      setInputText(textToSend); // Restore text on error
+      setInputText(textToSend);
     }
   };
 
-  // Helper to format time
+  // --- Image Handling Logic ---
+  
+  // Compresses image to ensure it fits in Firestore document (max 1MB limit)
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          
+          // Resize logic: Max dimension 800px to ensure base64 string is < 1MB
+          const MAX_DIMENSION = 800;
+          if (width > height) {
+            if (width > MAX_DIMENSION) {
+              height *= MAX_DIMENSION / width;
+              width = MAX_DIMENSION;
+            }
+          } else {
+            if (height > MAX_DIMENSION) {
+              width *= MAX_DIMENSION / height;
+              height = MAX_DIMENSION;
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          // Output as JPEG with 0.85 quality
+          resolve(canvas.toDataURL('image/jpeg', 0.85));
+        };
+      };
+    });
+  };
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+
+    setIsUploading(true);
+    try {
+      const base64Image = await compressImage(file);
+      
+      const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+      await addDoc(messagesRef, {
+        text: 'Sent a photo',
+        imageUrl: base64Image,
+        sender: username,
+        senderId: user.uid,
+        timestamp: Date.now(),
+        type: 'image'
+      });
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Failed to send image. It might be too large.");
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
   const formatTime = (timestamp) => {
     if (!timestamp) return '';
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Loading Screen
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-pink-50">
@@ -133,7 +202,6 @@ export default function App() {
     );
   }
 
-  // Login Screen
   if (!hasJoined) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-pink-100 to-purple-200 p-4">
@@ -167,7 +235,6 @@ export default function App() {
     );
   }
 
-  // Main Chat Interface
   return (
     <div className="flex flex-col h-screen bg-gray-50 md:max-w-md md:mx-auto md:shadow-2xl md:h-[90vh] md:mt-[5vh] md:rounded-3xl overflow-hidden border-gray-200">
       
@@ -226,7 +293,19 @@ export default function App() {
                 {!isMe && (
                   <p className="text-xs text-pink-500 font-bold mb-1">{msg.sender}</p>
                 )}
-                <p className="break-words leading-relaxed">{msg.text}</p>
+                
+                {msg.type === 'image' ? (
+                  <div className="mb-1">
+                    <img 
+                      src={msg.imageUrl} 
+                      alt="Sent photo" 
+                      className="rounded-lg max-h-60 w-auto object-cover border border-black/10"
+                    />
+                  </div>
+                ) : (
+                  <p className="break-words leading-relaxed">{msg.text}</p>
+                )}
+                
                 <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-pink-100' : 'text-gray-400'}`}>
                   {formatTime(msg.timestamp)}
                 </div>
@@ -240,19 +319,37 @@ export default function App() {
       {/* Input Area */}
       <div className="bg-white p-3 border-t border-gray-100">
         <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 p-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-pink-200 transition-all">
-          <div className="pl-2">
-             <Smile className="w-6 h-6 text-gray-400 hover:text-pink-400 cursor-pointer transition-colors" />
+          
+          {/* Image Upload Button */}
+          <div className="pl-2 relative">
+             <input 
+               type="file" 
+               accept="image/*" 
+               ref={fileInputRef}
+               onChange={handleImageUpload}
+               className="hidden" 
+             />
+             <button
+               type="button"
+               onClick={() => fileInputRef.current?.click()}
+               disabled={isUploading}
+               className="text-gray-400 hover:text-pink-400 transition-colors disabled:opacity-50"
+             >
+               <ImageIcon className={`w-6 h-6 ${isUploading ? 'animate-pulse text-pink-400' : ''}`} />
+             </button>
           </div>
+
           <input
             type="text"
             className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400"
-            placeholder="Type a message..."
+            placeholder={isUploading ? "Sending photo..." : "Type a message..."}
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
+            disabled={isUploading}
           />
           <button 
             type="submit" 
-            disabled={!inputText.trim()}
+            disabled={!inputText.trim() || isUploading}
             className="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 text-white p-2.5 rounded-full transition-all shadow-md transform active:scale-95"
           >
             <Send className="w-5 h-5 ml-0.5" />
