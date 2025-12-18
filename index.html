@@ -99,23 +99,22 @@
 
     <!-- MOMENTS/DATES MODAL -->
     <div id="countdown-modal" class="hidden fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div class="bg-white dark:bg-slate-800 w-[90%] max-w-[340px] rounded-3xl shadow-2xl p-5 relative border-2 border-pink-100 dark:border-slate-700 max-h-[85vh] overflow-y-auto">
+        <div class="bg-white dark:bg-slate-800 w-[85%] max-w-[340px] sm:max-w-sm rounded-3xl shadow-2xl p-5 sm:p-6 relative border-2 border-pink-100 dark:border-slate-700 max-h-[85vh] overflow-y-auto">
             <button id="close-countdown" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
             
             <!-- Together Since Section -->
             <div class="text-center mb-6">
-                <h3 class="text-xl font-black text-pink-500 dark:text-pink-400 mb-1">Tracker</h3>
-                <p class="text-xs text-gray-400 uppercase tracking-widest mb-4">Together Since</p>
+                <h3 class="text-xl font-black text-pink-500 dark:text-pink-400 mb-4 uppercase tracking-widest">Together Since</h3>
                 
-                <div id="together-display" class="hidden bg-gradient-to-br from-pink-500 to-rose-500 text-white p-4 rounded-2xl shadow-lg mb-4">
+                <div id="together-display" class="hidden bg-gradient-to-br from-pink-500 to-rose-500 text-white p-4 rounded-2xl shadow-lg mb-4 transform transition-all hover:scale-105">
                     <div id="together-timer" class="font-bold text-lg leading-relaxed">Calculating...</div>
                 </div>
 
-                <div class="flex gap-2">
-                    <input type="date" id="together-date-input" class="w-full bg-gray-100 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400">
-                    <button id="save-together-btn" class="bg-gray-800 dark:bg-white dark:text-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold">Set</button>
+                <div class="flex gap-2 justify-center">
+                    <input type="date" id="together-date-input" class="bg-gray-100 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400">
+                    <button id="save-together-btn" class="bg-gray-800 dark:bg-white dark:text-slate-900 text-white px-3 py-2 rounded-xl text-xs font-bold shadow-md active:scale-95 transition-transform">Set Date</button>
                 </div>
             </div>
 
@@ -132,7 +131,7 @@
                 </div>
 
                 <form id="countdown-form" class="space-y-3">
-                    <input type="text" id="countdown-title-input" placeholder="Event Name" class="w-full bg-gray-100 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400">
+                    <input type="text" id="countdown-title-input" placeholder="Event Name (e.g. Anniversary)" class="w-full bg-gray-100 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400">
                     <input type="date" id="countdown-date-input" class="w-full bg-gray-100 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400">
                     <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-2.5 rounded-xl transition-all shadow-md active:scale-95 text-sm">Save Event</button>
                 </form>
@@ -713,9 +712,9 @@
                 }
 
                 const encodedText = encodeURIComponent(msg.text || '');
-                // ACTION MENU
+                // ACTION MENU - FIXED: Removed stopPropagation so clicks bubble up
                 const actionMenu = !msg.deleted ? `
-                    <div class="hidden absolute -top-12 ${isMe ? 'right-0' : 'left-0'} bg-white dark:bg-slate-700 shadow-2xl rounded-2xl p-2 border border-gray-100 dark:border-slate-600 z-50 flex flex-col gap-2 menu-animate reaction-menu-container min-w-[200px]" onclick="event.stopPropagation()">
+                    <div class="hidden absolute -top-12 ${isMe ? 'right-0' : 'left-0'} bg-white dark:bg-slate-700 shadow-2xl rounded-2xl p-2 border border-gray-100 dark:border-slate-600 z-50 flex flex-col gap-2 menu-animate reaction-menu-container min-w-[200px]">
                         <div class="flex justify-between items-center gap-2 px-1 pb-2 border-b border-gray-100 dark:border-slate-600">
                             <button data-action="react" data-id="${msg.id}" data-emoji="❤️" class="text-2xl hover:scale-125 transition-transform active:scale-95">❤️</button>
                             <button data-action="react" data-id="${msg.id}" data-emoji="😂" class="text-2xl hover:scale-125 transition-transform active:scale-95">😂</button>
@@ -784,6 +783,7 @@
                 }
             }
             
+            // Re-attach long press listeners to new elements
             document.querySelectorAll('.message-bubble').forEach(el => {
                 el.addEventListener('mousedown', handleStartPress);
                 el.addEventListener('touchstart', handleStartPress);
@@ -809,12 +809,15 @@
         }
 
         function showMenu(container) {
+            // Close others first
             closeAllMenus();
+            
             if (container) {
                 const menu = container.querySelector('.reaction-menu-container');
                 if (menu) {
                     menu.classList.remove('hidden');
                     els.menuOverlay.classList.remove('hidden');
+                    // Vibration feedback
                     if (navigator.vibrate) navigator.vibrate(50);
                 }
             }
@@ -825,6 +828,7 @@
             els.menuOverlay.classList.add('hidden');
         }
 
+        // Global click handler to close menu
         els.menuOverlay.addEventListener('click', closeAllMenus);
 
         async function sendReaction(id, emoji) {
@@ -856,6 +860,7 @@
             if (!btn) return;
             const action = btn.dataset.action;
             
+            // Actions that close the menu immediately
             if (action) closeAllMenus();
 
             if (action === 'edit') {
@@ -1075,4 +1080,3 @@
     </script>
 </body>
 </html>
-
