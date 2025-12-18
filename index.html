@@ -2,19 +2,14 @@
 <html lang="en" class="light">
 <head>
     <meta charset="UTF-8">
+    <!-- Fix for Mobile Viewport/Notch/Scroll -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     
-    <!-- iOS Settings -->
+    <!-- PWA Settings -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Chat">
-    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/134/134914.png">
-
-    <!-- Android/Samsung PWA Settings -->
     <meta name="theme-color" content="#fdf2f8">
-    <meta name="mobile-web-app-capable" content="yes">
-    <link rel="manifest" href='data:application/manifest+json,{"name":"Chat","short_name":"Chat","start_url":".","display":"standalone","background_color":"#fdf2f8","theme_color":"#fdf2f8","icons":[{"src":"https://cdn-icons-png.flaticon.com/512/134/134914.png","sizes":"512x512","type":"image/png"}]}'>
-
+    
     <title>Chat</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
@@ -31,34 +26,40 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
+        /* Modern Scrollbar */
         body { font-family: 'Inter', sans-serif; }
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         
+        /* Animations */
         .reaction-menu { transform: scale(0); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-origin: bottom center; }
         .group:hover .reaction-menu { transform: scale(1); }
-        
         .typing-dot { animation: bounce 1.4s infinite ease-in-out both; }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
         @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
         
+        /* Fix for iOS bottom bar */
         .safe-pb { padding-bottom: env(safe-area-inset-bottom); }
         
-        /* Audio Player Styling */
-        audio::-webkit-media-controls-panel { background-color: white; }
-        .dark audio::-webkit-media-controls-panel { background-color: #cbd5e1; }
+        /* Ensure layout works on all mobile browsers */
+        .h-dvh { height: 100vh; height: 100dvh; }
     </style>
 </head>
-<body class="bg-pink-50 dark:bg-slate-900 transition-colors duration-200 overflow-hidden h-screen flex flex-col">
+<!-- Changed h-screen to h-dvh for better mobile support -->
+<body class="bg-pink-50 dark:bg-slate-900 transition-colors duration-200 overflow-hidden h-dvh flex flex-col">
 
     <audio id="notify-sound" src="data:audio/wav;base64,UklGRl9vT1BXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YU"></audio>
+
+    <!-- ERROR BANNER (Shows if connection fails) -->
+    <div id="error-banner" class="hidden fixed top-0 left-0 w-full bg-red-500 text-white text-xs font-bold p-2 text-center z-[100]">
+        Connection Error. Check Firebase Authorized Domains.
+    </div>
 
     <!-- LOGIN SCREEN -->
     <div id="login-screen" class="hidden fixed inset-0 z-50 flex-col items-center justify-center bg-gradient-to-br from-pink-100 to-rose-200 dark:from-slate-800 dark:to-slate-900 p-4 transition-colors">
         <div class="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-2 border-pink-100 dark:border-slate-700 relative transition-colors">
             
-            <!-- Avatar Upload -->
             <div class="relative w-24 h-24 mx-auto mb-6 group cursor-pointer" onclick="document.getElementById('login-avatar-input').click()">
                 <div id="login-avatar-preview" class="w-full h-full rounded-full bg-pink-100 dark:bg-slate-700 overflow-hidden border-4 border-white dark:border-slate-600 shadow-md flex items-center justify-center">
                     <svg class="w-10 h-10 text-pink-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -76,46 +77,45 @@
 
             <form id="login-form" class="space-y-4">
                 <input type="text" id="username-input" placeholder="Your Name" class="w-full px-4 py-3 border border-gray-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 bg-white dark:bg-slate-700 dark:text-white transition-all text-center font-bold" required>
-                <button type="submit" id="login-btn" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200 dark:shadow-none disabled:opacity-50">Start Chatting</button>
+                <button type="submit" id="login-btn" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200 dark:shadow-none disabled:opacity-50 cursor-pointer">Start Chatting</button>
             </form>
         </div>
     </div>
 
     <!-- MAIN APP -->
-    <div id="app-screen" class="hidden flex-col h-full w-full">
+    <div id="app-screen" class="hidden flex-col h-full w-full relative">
+        
         <!-- Header -->
-        <header class="bg-white dark:bg-slate-800 px-4 py-3 pt-safe-top shadow-sm flex items-center justify-between z-20 border-b border-gray-200 dark:border-slate-700">
+        <header class="bg-white dark:bg-slate-800 px-4 py-3 pt-safe-top shadow-sm flex items-center justify-between z-40 border-b border-gray-200 dark:border-slate-700 relative">
             <div class="flex items-center gap-3">
-                <div id="header-avatar" class="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden">
-                    <!-- Img or Initial -->
-                </div>
+                <div id="header-avatar" class="w-10 h-10 rounded-full bg-gradient-to-tr from-pink-400 to-rose-500 flex items-center justify-center text-white font-bold shadow-inner overflow-hidden"></div>
                 <div>
                     <h2 class="font-bold text-lg text-gray-800 dark:text-white flex items-center gap-1">Chat <span class="text-pink-500">❤️</span></h2>
                     <p class="text-[10px] text-green-500 flex items-center gap-1 font-bold uppercase tracking-wider"><span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span> Online</p>
                 </div>
             </div>
             <div class="flex items-center gap-2">
-                <button id="theme-toggle" class="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full">
+                <button id="theme-toggle" class="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 rounded-full cursor-pointer">
                     <svg id="moon-icon" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
                     <svg id="sun-icon" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
                 </button>
-                <button id="logout-btn" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-full">
+                <button id="logout-btn" class="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-slate-700 rounded-full cursor-pointer">
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 </button>
             </div>
         </header>
 
         <!-- Messages Area -->
-        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-6 bg-pink-50 dark:bg-slate-900 relative scroll-smooth">
-            <div id="messages-list" class="max-w-4xl mx-auto w-full space-y-4 pb-4"></div>
+        <div id="messages-container" class="flex-1 overflow-y-auto p-4 space-y-6 bg-pink-50 dark:bg-slate-900 relative scroll-smooth z-0">
+            <div id="messages-list" class="max-w-4xl mx-auto w-full space-y-4 pb-20"></div>
             <!-- Typing Indicator -->
-            <div id="typing-indicator" class="hidden absolute bottom-2 left-6 z-20 text-xs font-medium text-gray-500 dark:text-gray-400 bg-white/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-700 animate-pulse flex items-center gap-1">
+            <div id="typing-indicator" class="hidden absolute bottom-4 left-6 z-10 text-xs font-medium text-gray-500 dark:text-gray-400 bg-white/90 dark:bg-slate-800/90 px-3 py-1.5 rounded-full shadow-sm border border-gray-100 dark:border-slate-700 animate-pulse flex items-center gap-1">
                 <span id="typing-names">Someone</span> is typing <span class="flex gap-0.5"><span class="typing-dot">.</span><span class="typing-dot">.</span><span class="typing-dot">.</span></span>
             </div>
         </div>
 
-        <!-- GIF/Sticker Picker (Hidden) -->
-        <div id="sticker-picker" class="hidden fixed bottom-20 left-4 right-4 md:left-auto md:right-20 md:w-80 h-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 z-30 flex flex-col overflow-hidden">
+        <!-- GIF/Sticker Picker (Fixed Z-Index) -->
+        <div id="sticker-picker" class="hidden fixed bottom-20 left-4 right-4 md:left-auto md:right-20 md:w-80 h-64 bg-white dark:bg-slate-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-slate-700 z-[60] flex flex-col overflow-hidden">
             <div class="p-2 bg-gray-50 dark:bg-slate-900 border-b border-gray-100 dark:border-slate-700 flex justify-between items-center">
                 <span class="text-xs font-bold text-gray-500 uppercase">Cute Stickers</span>
                 <button id="close-stickers" class="text-gray-400 hover:text-gray-600"><svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
@@ -125,20 +125,20 @@
             </div>
         </div>
 
-        <!-- Input Area -->
-        <div class="bg-white dark:bg-slate-800 p-3 md:p-4 border-t border-gray-200 dark:border-slate-700 w-full z-20 safe-pb">
+        <!-- Input Area (Z-Index increased to 50) -->
+        <div class="bg-white dark:bg-slate-800 p-3 md:p-4 border-t border-gray-200 dark:border-slate-700 w-full z-50 safe-pb relative shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
             <div class="max-w-4xl mx-auto w-full">
                 <!-- Reply Banner -->
                 <div id="reply-preview" class="hidden flex items-center justify-between bg-pink-50 dark:bg-slate-700/50 p-2 px-3 rounded-t-xl border-l-4 border-pink-500 mb-2 text-xs">
                     <div class="overflow-hidden"><p class="font-bold text-pink-500 mb-0.5">Replying to <span id="reply-to-name">User</span></p><p id="reply-to-text" class="text-gray-600 dark:text-gray-300 truncate">...</p></div>
-                    <button id="cancel-reply" class="p-1 hover:bg-black/5 rounded-full"><svg class="w-3.5 h-3.5 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+                    <button id="cancel-reply" class="p-1 hover:bg-black/5 rounded-full cursor-pointer"><svg class="w-3.5 h-3.5 opacity-50" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
                 </div>
 
-                <div id="message-input-area" class="flex items-center gap-3 bg-gray-50 dark:bg-slate-900 p-2 sm:p-3 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:ring-4 focus-within:ring-pink-100 dark:focus-within:ring-pink-900/30 focus-within:bg-white dark:focus-within:bg-slate-900 transition-all shadow-inner">
+                <div id="message-input-area" class="flex items-center gap-3 bg-gray-50 dark:bg-slate-900 p-2 sm:p-3 rounded-2xl border border-gray-200 dark:border-slate-700 focus-within:ring-4 focus-within:ring-pink-100 dark:focus-within:ring-pink-900/30 focus-within:bg-white dark:focus-within:bg-slate-900 transition-all shadow-inner relative z-50">
                     <div class="flex items-center px-1 relative">
                         <input type="file" id="image-input" accept="image/*" class="hidden">
-                        <button id="image-btn" class="p-2 text-gray-400 hover:text-pink-500 transition-colors" title="Photo"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
-                        <button id="sticker-btn" class="p-2 text-gray-400 hover:text-yellow-500 transition-colors" title="Stickers"><svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
+                        <button id="image-btn" class="p-2 text-gray-400 hover:text-pink-500 transition-colors cursor-pointer" title="Photo"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
+                        <button id="sticker-btn" class="p-2 text-gray-400 hover:text-yellow-500 transition-colors cursor-pointer" title="Stickers"><svg class="w-6 h-6 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg></button>
                     </div>
 
                     <!-- Text Input -->
@@ -148,11 +148,11 @@
 
                     <!-- Mic / Send -->
                     <div class="pb-1">
-                        <button id="send-btn" type="button" class="hidden bg-pink-500 hover:bg-pink-600 text-white p-2.5 rounded-full shadow-lg transition-transform active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                        <button id="send-btn" type="button" class="hidden bg-pink-500 hover:bg-pink-600 text-white p-2.5 rounded-full shadow-lg transition-transform active:scale-95 disabled:bg-gray-400 disabled:cursor-not-allowed cursor-pointer">
                             <svg class="w-5 h-5 ml-0.5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                         </button>
-                        <button id="mic-btn" type="button" class="bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 text-gray-600 dark:text-gray-300 p-2.5 rounded-full shadow transition-colors">
-                            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
+                        <button id="mic-btn" type="button" class="bg-gray-200 dark:bg-slate-700 hover:bg-gray-300 text-gray-600 dark:text-gray-300 p-2.5 rounded-full shadow transition-colors cursor-pointer">
+                            <svg class="w-5 h-5 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>
                         </button>
                     </div>
                 </div>
@@ -198,6 +198,7 @@
             loginScreen: document.getElementById('login-screen'),
             appScreen: document.getElementById('app-screen'),
             loadingScreen: document.getElementById('loading-screen'),
+            errorBanner: document.getElementById('error-banner'),
             loginForm: document.getElementById('login-form'),
             username: document.getElementById('username-input'),
             msgInput: document.getElementById('message-input'),
@@ -255,7 +256,11 @@
                 if (state.username) showApp();
                 else showLogin();
             } else {
-                signInAnonymously(auth).catch(console.error);
+                signInAnonymously(auth).catch(err => {
+                    console.error(err);
+                    els.errorBanner.classList.remove('hidden');
+                    els.errorBanner.textContent = "Auth Error: " + err.message;
+                });
                 showLogin();
             }
         });
@@ -324,6 +329,7 @@
         function startMessageListener() {
             const q = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
             onSnapshot(q, (snapshot) => {
+                els.errorBanner.classList.add('hidden'); // Clear error on success
                 const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.timestamp - b.timestamp);
                 
                 // Read Receipts & Notifications
@@ -339,7 +345,6 @@
                         }
                         // Mark as read if it's not mine
                         if (data.sender !== state.username && !data.read) {
-                            // Don't update immediately to avoid loop, do it once
                             updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'chat_messages', change.doc.id), { read: true }).catch(e=>{});
                         }
                     }
@@ -348,6 +353,9 @@
                 renderMessages(msgs);
             }, (error) => {
                 console.error("Database Error:", error);
+                els.errorBanner.classList.remove('hidden');
+                if (error.code === 'permission-denied') els.errorBanner.textContent = "Access Denied. Check Firebase Rules.";
+                else els.errorBanner.textContent = "Connection Lost. Check Authorized Domains.";
             });
         }
 
@@ -401,9 +409,9 @@
                 // Data Attributes for Actions
                 const encodedText = encodeURIComponent(msg.text || '');
                 const actionBtns = !msg.deleted ? `
-                    <div class="absolute -top-6 ${isMe ? 'right-0' : 'left-0'} hidden group-hover:flex bg-white dark:bg-slate-700 shadow rounded-full p-1 border dark:border-slate-600 gap-1">
-                        <button data-action="reply" data-id="${msg.id}" data-sender="${msg.sender}" data-type="${msg.type}" data-text="${encodedText}" class="p-1 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-full text-gray-500"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
-                        ${isMe ? `<button data-action="delete" data-id="${msg.id}" class="p-1 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
+                    <div class="absolute -top-6 ${isMe ? 'right-0' : 'left-0'} hidden group-hover:flex bg-white dark:bg-slate-700 shadow rounded-full p-1 border dark:border-slate-600 gap-1 z-10">
+                        <button data-action="reply" data-id="${msg.id}" data-sender="${msg.sender}" data-type="${msg.type}" data-text="${encodedText}" class="p-1 hover:bg-gray-100 dark:hover:bg-slate-600 rounded-full text-gray-500 cursor-pointer"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg></button>
+                        ${isMe ? `<button data-action="delete" data-id="${msg.id}" class="p-1 hover:bg-red-50 text-gray-500 hover:text-red-500 rounded-full cursor-pointer"><svg class="w-3 h-3 pointer-events-none" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>` : ''}
                     </div>` : '';
 
                 html += `
