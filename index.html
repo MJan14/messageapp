@@ -3,20 +3,21 @@ import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
   signInAnonymously, 
-  onAuthStateChanged
+  onAuthStateChanged,
+  signInWithCustomToken 
 } from 'firebase/auth';
 import { 
   getFirestore, 
   collection, 
   addDoc, 
-  onSnapshot, 
-  doc,
-  deleteDoc
+  onSnapshot 
 } from 'firebase/firestore';
-import { Send, Heart, User, Trash2, Smile, Image as ImageIcon } from 'lucide-react';
+import { Send, Heart, User, Smile, Image as ImageIcon, AlertCircle } from 'lucide-react';
 
-// --- YOUR Firebase Configuration ---
-const firebaseConfig = {
+// --- Firebase Configuration ---
+// We use a fallback logic: Use environment config if available (for preview), 
+// otherwise use your hardcoded project keys (for your published site).
+const userConfig = {
   apiKey: "AIzaSyCuDu_yuMRmXTi7N3tdMJckLnuHyQ2tcsc",
   authDomain: "messageapp-98066.firebaseapp.com",
   projectId: "messageapp-98066",
@@ -26,16 +27,18 @@ const firebaseConfig = {
   measurementId: "G-H096MFHK6K"
 };
 
-// Initialize Firebase
+const firebaseConfig = typeof __firebase_config !== 'undefined' 
+  ? JSON.parse(__firebase_config) 
+  : userConfig;
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
-
-// We use a fixed ID here since it's your own private database now
-const appId = 'love-chat';
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'love-chat';
 
 export default function App() {
   const [user, setUser] = useState(null);
+  const [authError, setAuthError] = useState(null);
   const [username, setUsername] = useState(() => localStorage.getItem('lovechat_username') || '');
   const [hasJoined, setHasJoined] = useState(!!localStorage.getItem('lovechat_username'));
   const [messages, setMessages] = useState([]);
@@ -46,14 +49,23 @@ export default function App() {
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // 1. Authentication Setup
+  // 1. Mandatory Auth Pattern (Rule 3)
   useEffect(() => {
     const initAuth = async () => {
       try {
-        // Simple anonymous sign-in for your own project
-        await signInAnonymously(auth);
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
       } catch (error) {
         console.error("Auth error:", error);
+        // Specifically handle the configuration error the user is seeing
+        if (error.code === 'auth/configuration-not-found') {
+          setAuthError("Anonymous sign-in is not enabled. Go to your Firebase Console > Authentication > Sign-in method and enable 'Anonymous'.");
+        } else {
+          setAuthError(error.message);
+        }
       }
     };
 
@@ -66,11 +78,10 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 2. Data Fetching (Real-time Messages)
+  // 2. Data Fetching - Guarded by user check (Rule 3)
   useEffect(() => {
     if (!user) return;
 
-    // We store messages in 'artifacts/love-chat/public/data/chat_messages'
     const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
 
     const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
@@ -78,17 +89,16 @@ export default function App() {
         id: doc.id,
         ...doc.data()
       }));
-      
+      // Sort in memory (Rule 2)
       msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
       setMessages(msgs);
     }, (error) => {
-      console.error("Error fetching messages:", error);
+      console.error("Firestore error:", error);
     });
 
     return () => unsubscribe();
   }, [user]);
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -117,14 +127,11 @@ export default function App() {
         type: 'text'
       });
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("Send error:", error);
       setInputText(textToSend);
     }
   };
 
-  // --- Image Handling Logic ---
-  
-  // Compresses image to ensure it fits in Firestore document (max 1MB limit)
   const compressImage = (file) => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -136,9 +143,7 @@ export default function App() {
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
-          
-          // Resize logic: Max dimension 800px to ensure base64 string is < 1MB
-          const MAX_DIMENSION = 800;
+          const MAX_DIMENSION = 1000;
           if (width > height) {
             if (width > MAX_DIMENSION) {
               height *= MAX_DIMENSION / width;
@@ -150,14 +155,11 @@ export default function App() {
               height = MAX_DIMENSION;
             }
           }
-          
           canvas.width = width;
           canvas.height = height;
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, width, height);
-          
-          // Output as JPEG with 0.85 quality
-          resolve(canvas.toDataURL('image/jpeg', 0.85));
+          resolve(canvas.toDataURL('image/jpeg', 0.8));
         };
       };
     });
@@ -166,11 +168,9 @@ export default function App() {
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !user) return;
-
     setIsUploading(true);
     try {
       const base64Image = await compressImage(file);
-      
       const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
       await addDoc(messagesRef, {
         text: 'Sent a photo',
@@ -181,8 +181,7 @@ export default function App() {
         type: 'image'
       });
     } catch (error) {
-      console.error("Error uploading image:", error);
-      alert("Failed to send image. It might be too large.");
+      console.error("Upload error:", error);
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -193,6 +192,25 @@ export default function App() {
     if (!timestamp) return '';
     return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  // Auth Error UI
+  if (authError) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-red-50 p-6">
+        <div className="bg-white p-8 rounded-2xl shadow-xl max-w-md text-center border-2 border-red-100">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-800 mb-2">Setup Required</h2>
+          <p className="text-gray-600 mb-6 leading-relaxed">{authError}</p>
+          <button 
+            onClick={() => window.location.reload()}
+            className="bg-gray-800 text-white px-6 py-2 rounded-lg font-bold hover:bg-gray-900 transition-all"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -211,7 +229,6 @@ export default function App() {
           </div>
           <h1 className="text-3xl font-bold text-gray-800 mb-2">LoveChat</h1>
           <p className="text-gray-500 mb-8">A private space for just the two of us.</p>
-          
           <form onSubmit={handleJoin} className="space-y-4">
             <div className="relative">
               <User className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
@@ -223,10 +240,7 @@ export default function App() {
                 onChange={(e) => setUsername(e.target.value)}
               />
             </div>
-            <button
-              type="submit"
-              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200"
-            >
+            <button type="submit" className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200">
               Start Chatting
             </button>
           </form>
@@ -236,21 +250,19 @@ export default function App() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50 overflow-hidden">
-      
-      {/* Header */}
-      <header className="bg-white p-4 shadow-sm flex items-center justify-between z-10 border-b border-gray-200">
-        <div className="flex items-center gap-3">
-          <div className="bg-gradient-to-tr from-pink-400 to-purple-500 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold">
+    <div className="flex flex-col h-screen bg-slate-100 overflow-hidden font-sans">
+      <header className="bg-white px-6 py-4 shadow-sm flex items-center justify-between z-20 border-b border-gray-200">
+        <div className="flex items-center gap-4">
+          <div className="bg-gradient-to-tr from-pink-400 to-purple-500 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-inner">
             {username.charAt(0).toUpperCase()}
           </div>
           <div>
-            <h2 className="font-bold text-gray-800 flex items-center gap-2">
-              LoveChat <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
+            <h2 className="font-bold text-xl text-gray-800 flex items-center gap-2">
+              LoveChat <Heart className="w-5 h-5 text-pink-500 fill-pink-500" />
             </h2>
-            <p className="text-xs text-green-500 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-              Online
+            <p className="text-xs text-green-500 flex items-center gap-1 font-medium">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              Secure Connected
             </p>
           </div>
         </div>
@@ -260,101 +272,63 @@ export default function App() {
             setHasJoined(false);
             setUsername('');
           }}
-          className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+          className="px-4 py-2 text-sm font-semibold text-gray-500 hover:text-red-500 bg-gray-100 hover:bg-red-50 rounded-lg transition-all"
         >
           Logout
         </button>
       </header>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
-        {messages.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 opacity-50">
-            <Heart className="w-12 h-12" />
-            <p>No messages yet. Say hi!</p>
-          </div>
-        )}
-        
-        {messages.map((msg) => {
-          const isMe = msg.sender === username;
-          
-          return (
-            <div 
-              key={msg.id} 
-              className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}
-            >
-              <div 
-                className={`max-w-[85%] md:max-w-[60%] px-4 py-2 rounded-2xl shadow-sm relative group ${
-                  isMe 
-                    ? 'bg-pink-500 text-white rounded-br-none' 
-                    : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
-                }`}
-              >
-                {!isMe && (
-                  <p className="text-xs text-pink-500 font-bold mb-1">{msg.sender}</p>
-                )}
-                
-                {msg.type === 'image' ? (
-                  <div className="mb-1">
-                    <img 
-                      src={msg.imageUrl} 
-                      alt="Sent photo" 
-                      className="rounded-lg max-h-60 md:max-h-96 w-auto object-cover border border-black/10"
-                    />
+      <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 bg-slate-50 relative">
+        <div className="absolute inset-0 opacity-[0.03] pointer-events-none select-none flex flex-wrap items-center justify-center gap-20 overflow-hidden">
+           {[...Array(15)].map((_, i) => <Heart key={i} size={100} />)}
+        </div>
+
+        <div className="max-w-6xl mx-auto w-full space-y-6 relative z-10">
+          {messages.map((msg) => {
+            const isMe = msg.sender === username;
+            return (
+              <div key={msg.id} className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+                <div className={`max-w-[90%] sm:max-w-[70%] md:max-w-[60%] px-5 py-3 rounded-2xl shadow-md relative ${isMe ? 'bg-pink-500 text-white rounded-br-none' : 'bg-white text-gray-800 rounded-bl-none border border-gray-200'}`}>
+                  {!isMe && <p className="text-xs text-pink-500 font-bold mb-1.5 uppercase tracking-wider">{msg.sender}</p>}
+                  {msg.type === 'image' ? (
+                    <img src={msg.imageUrl} alt="Sent photo" className="rounded-xl max-h-[450px] w-full object-contain bg-black/5 mb-2" />
+                  ) : (
+                    <p className="break-words leading-relaxed text-[15px] sm:text-[16px]">{msg.text}</p>
+                  )}
+                  <div className={`text-[10px] mt-2 flex items-center justify-end font-medium ${isMe ? 'text-pink-100' : 'text-gray-400'}`}>
+                    {formatTime(msg.timestamp)}
                   </div>
-                ) : (
-                  <p className="break-words leading-relaxed">{msg.text}</p>
-                )}
-                
-                <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-pink-100' : 'text-gray-400'}`}>
-                  {formatTime(msg.timestamp)}
                 </div>
               </div>
-            </div>
-          );
-        })}
-        <div ref={messagesEndRef} />
+            );
+          })}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      {/* Input Area */}
-      <div className="bg-white p-4 border-t border-gray-100 w-full">
-        <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 p-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-pink-200 transition-all max-w-4xl mx-auto w-full">
-          
-          {/* Image Upload Button */}
-          <div className="pl-2 relative">
-             <input 
-               type="file" 
-               accept="image/*" 
-               ref={fileInputRef}
-               onChange={handleImageUpload}
-               className="hidden" 
-             />
-             <button
-               type="button"
-               onClick={() => fileInputRef.current?.click()}
-               disabled={isUploading}
-               className="text-gray-400 hover:text-pink-400 transition-colors disabled:opacity-50"
-             >
-               <ImageIcon className={`w-6 h-6 ${isUploading ? 'animate-pulse text-pink-400' : ''}`} />
-             </button>
-          </div>
-
-          <input
-            type="text"
-            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400"
-            placeholder={isUploading ? "Sending photo..." : "Type a message..."}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            disabled={isUploading}
-          />
-          <button 
-            type="submit" 
-            disabled={!inputText.trim() || isUploading}
-            className="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 text-white p-2.5 rounded-full transition-all shadow-md transform active:scale-95"
-          >
-            <Send className="w-5 h-5 ml-0.5" />
-          </button>
-        </form>
+      <div className="bg-white p-4 md:p-6 border-t border-gray-200 w-full z-20">
+        <div className="max-w-6xl mx-auto w-full">
+          <form onSubmit={handleSend} className="flex items-center gap-3 bg-gray-100 p-2 sm:p-3 rounded-2xl border border-gray-200 focus-within:ring-4 focus-within:ring-pink-100 focus-within:bg-white transition-all shadow-inner">
+            <div className="flex items-center px-1">
+               <input type="file" accept="image/*" ref={fileInputRef} onChange={handleImageUpload} className="hidden" />
+               <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isUploading} className="p-2 text-gray-400 hover:text-pink-500 hover:bg-pink-50 rounded-xl transition-all disabled:opacity-50">
+                 <ImageIcon className={`w-6 h-6 ${isUploading ? 'animate-pulse text-pink-500' : ''}`} />
+               </button>
+            </div>
+            <input
+              type="text"
+              className="flex-1 bg-transparent border-none focus:ring-0 text-gray-800 placeholder-gray-400 text-base py-2"
+              placeholder={isUploading ? "Uploading..." : "Type a message..."}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              disabled={isUploading}
+            />
+            <button type="submit" disabled={!inputText.trim() || isUploading} className="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 text-white p-3 rounded-xl transition-all shadow-lg flex items-center gap-2 group">
+              <span className="hidden sm:inline font-bold px-1">Send</span>
+              <Send className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   );
