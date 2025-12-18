@@ -30,21 +30,24 @@
     <style>
         /* NATIVE APP FEEL CSS */
         * {
-            -webkit-tap-highlight-color: transparent;
-            user-select: none;
+            -webkit-tap-highlight-color: transparent; /* No blue tap box */
+            user-select: none; /* Prevent text selection on UI */
         }
         
-        .selectable, input, textarea { user-select: text; }
+        /* Allow text selection only in messages and inputs */
+        .selectable, input { user-select: text; }
 
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
-            overscroll-behavior-y: none;
+            overscroll-behavior-y: none; /* No bounce */
         }
 
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
         
+        .reaction-menu { transform: scale(0); transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); transform-origin: bottom center; }
+        .group:hover .reaction-menu { transform: scale(1); }
         .typing-dot { animation: bounce 1.4s infinite ease-in-out both; }
         .typing-dot:nth-child(1) { animation-delay: -0.32s; }
         .typing-dot:nth-child(2) { animation-delay: -0.16s; }
@@ -64,11 +67,13 @@
         }
         .menu-animate { animation: menu-pop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
 
+        /* iOS Safe Areas */
         .safe-pt { padding-top: max(12px, env(safe-area-inset-top)); }
         .safe-pb { padding-bottom: max(12px, env(safe-area-inset-bottom)); }
         
         .h-dvh { height: 100vh; height: 100dvh; }
 
+        /* Glassmorphism Header */
         .glass-header {
             background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(12px);
@@ -92,32 +97,36 @@
     <!-- OVERLAY (For closing menus) -->
     <div id="menu-overlay" class="hidden fixed inset-0 z-[45] bg-black/10 backdrop-blur-[1px] transition-opacity"></div>
 
-    <!-- COUNTDOWN MODAL -->
+    <!-- COUNTDOWN MODAL (Adjusted Width to 85%) -->
     <div id="countdown-modal" class="hidden fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-        <div class="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl p-6 relative">
+        <div class="bg-white dark:bg-slate-800 w-[85%] max-w-[340px] sm:max-w-sm rounded-3xl shadow-2xl p-5 sm:p-6 relative border-2 border-pink-100 dark:border-slate-700">
             <button id="close-countdown" class="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                 <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
             </button>
             <div class="text-center mb-6">
-                <div class="w-16 h-16 bg-pink-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl">📅</div>
+                <div class="w-16 h-16 bg-pink-100 dark:bg-slate-700 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl shadow-sm">📅</div>
                 <h3 class="text-xl font-bold text-gray-800 dark:text-white">Special Date</h3>
                 <p class="text-sm text-gray-500 dark:text-gray-400">Track your anniversary or next date!</p>
             </div>
+            
+            <!-- Active Countdown Display -->
             <div id="active-countdown" class="hidden mb-6 text-center bg-pink-50 dark:bg-slate-700/50 p-4 rounded-2xl border border-pink-100 dark:border-slate-600">
-                <div id="countdown-title-display" class="text-sm font-bold text-pink-500 uppercase tracking-widest mb-1">Anniversary</div>
-                <div id="countdown-timer-display" class="text-3xl font-black text-gray-800 dark:text-white">0 Days</div>
+                <div id="countdown-title-display" class="text-sm font-bold text-pink-500 uppercase tracking-wide mb-1 truncate px-2">Anniversary</div>
+                <div id="countdown-timer-display" class="text-3xl font-black text-gray-800 dark:text-white break-words">0 Days</div>
                 <div id="countdown-subtext" class="text-xs text-gray-500 dark:text-gray-400 mt-1">left</div>
             </div>
+
+            <!-- Edit Form -->
             <form id="countdown-form" class="space-y-4">
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Event Title</label>
-                    <input type="text" id="countdown-title-input" placeholder="e.g. Anniversary" class="w-full bg-gray-100 dark:bg-slate-900 border-none rounded-xl px-4 py-3 text-gray-800 dark:text-white focus:ring-2 focus:ring-pink-400">
+                    <input type="text" id="countdown-title-input" placeholder="e.g. Anniversary" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all text-sm">
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-gray-500 uppercase mb-1 ml-1">Date</label>
-                    <input type="date" id="countdown-date-input" class="w-full bg-gray-100 dark:bg-slate-900 border-none rounded-xl px-4 py-3 text-gray-800 dark:text-white focus:ring-2 focus:ring-pink-400">
+                    <input type="date" id="countdown-date-input" class="w-full bg-gray-50 dark:bg-slate-900 border border-gray-100 dark:border-slate-700 rounded-xl px-4 py-3 text-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all text-sm">
                 </div>
-                <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-pink-200 dark:shadow-none">Save Date</button>
+                <button type="submit" class="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-pink-200 dark:shadow-none active:scale-95">Save Date</button>
             </form>
         </div>
     </div>
