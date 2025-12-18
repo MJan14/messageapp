@@ -1,0 +1,264 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { initializeApp } from 'firebase/app';
+import { 
+  getAuth, 
+  signInAnonymously, 
+  onAuthStateChanged,
+  signInWithCustomToken 
+} from 'firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  addDoc, 
+  onSnapshot, 
+  doc,
+  deleteDoc
+} from 'firebase/firestore';
+import { Send, Heart, User, Trash2, Smile } from 'lucide-react';
+
+// --- Firebase Configuration & Initialization ---
+const firebaseConfig = JSON.parse(__firebase_config);
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+export default function App() {
+  const [user, setUser] = useState(null);
+  const [username, setUsername] = useState(() => localStorage.getItem('lovechat_username') || '');
+  const [hasJoined, setHasJoined] = useState(!!localStorage.getItem('lovechat_username'));
+  const [messages, setMessages] = useState([]);
+  const [inputText, setInputText] = useState('');
+  const [loading, setLoading] = useState(true);
+  
+  const messagesEndRef = useRef(null);
+
+  // 1. Authentication Setup
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (error) {
+        console.error("Auth error:", error);
+      }
+    };
+
+    initAuth();
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Data Fetching (Real-time Messages)
+  useEffect(() => {
+    if (!user) return;
+
+    // Using the public data path so both users can see the same messages
+    const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+
+    // Subscribe to updates
+    const unsubscribe = onSnapshot(messagesRef, (snapshot) => {
+      const msgs = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
+      
+      // Sort in memory (Rule 2: Avoid complex Firestore queries)
+      // Sorting by timestamp ascending
+      msgs.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+      
+      setMessages(msgs);
+    }, (error) => {
+      console.error("Error fetching messages:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Handle Joining
+  const handleJoin = (e) => {
+    e.preventDefault();
+    if (!username.trim()) return;
+    localStorage.setItem('lovechat_username', username);
+    setHasJoined(true);
+  };
+
+  // Handle Sending
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!inputText.trim() || !user) return;
+
+    const textToSend = inputText;
+    setInputText(''); // Clear immediately for better UX
+
+    try {
+      const messagesRef = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
+      await addDoc(messagesRef, {
+        text: textToSend,
+        sender: username,
+        senderId: user.uid,
+        timestamp: Date.now(),
+        type: 'text'
+      });
+    } catch (error) {
+      console.error("Error sending message:", error);
+      setInputText(textToSend); // Restore text on error
+    }
+  };
+
+  // Helper to format time
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Loading Screen
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-pink-50">
+        <Heart className="w-12 h-12 text-pink-500 animate-pulse" />
+      </div>
+    );
+  }
+
+  // Login Screen
+  if (!hasJoined) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-gradient-to-br from-pink-100 to-purple-200 p-4">
+        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center border-2 border-pink-100">
+          <div className="bg-pink-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Heart className="w-8 h-8 text-pink-500 fill-current" />
+          </div>
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">LoveChat</h1>
+          <p className="text-gray-500 mb-8">A private space for just the two of us.</p>
+          
+          <form onSubmit={handleJoin} className="space-y-4">
+            <div className="relative">
+              <User className="absolute left-3 top-3 text-gray-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="What's your name?"
+                className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-pink-400 transition-all"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg shadow-pink-200"
+            >
+              Start Chatting
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Chat Interface
+  return (
+    <div className="flex flex-col h-screen bg-gray-50 md:max-w-md md:mx-auto md:shadow-2xl md:h-[90vh] md:mt-[5vh] md:rounded-3xl overflow-hidden border-gray-200">
+      
+      {/* Header */}
+      <header className="bg-white p-4 shadow-sm flex items-center justify-between z-10">
+        <div className="flex items-center gap-3">
+          <div className="bg-gradient-to-tr from-pink-400 to-purple-500 w-10 h-10 rounded-full flex items-center justify-center text-white font-bold">
+            {username.charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <h2 className="font-bold text-gray-800 flex items-center gap-2">
+              LoveChat <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />
+            </h2>
+            <p className="text-xs text-green-500 flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+              Online
+            </p>
+          </div>
+        </div>
+        <button 
+          onClick={() => {
+            localStorage.removeItem('lovechat_username');
+            setHasJoined(false);
+            setUsername('');
+          }}
+          className="text-sm text-gray-400 hover:text-red-500 transition-colors"
+        >
+          Logout
+        </button>
+      </header>
+
+      {/* Messages Area */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-400 space-y-2 opacity-50">
+            <Heart className="w-12 h-12" />
+            <p>No messages yet. Say hi!</p>
+          </div>
+        )}
+        
+        {messages.map((msg) => {
+          const isMe = msg.sender === username;
+          
+          return (
+            <div 
+              key={msg.id} 
+              className={`flex w-full ${isMe ? 'justify-end' : 'justify-start'}`}
+            >
+              <div 
+                className={`max-w-[75%] px-4 py-2 rounded-2xl shadow-sm relative group ${
+                  isMe 
+                    ? 'bg-pink-500 text-white rounded-br-none' 
+                    : 'bg-white text-gray-800 rounded-bl-none border border-gray-100'
+                }`}
+              >
+                {!isMe && (
+                  <p className="text-xs text-pink-500 font-bold mb-1">{msg.sender}</p>
+                )}
+                <p className="break-words leading-relaxed">{msg.text}</p>
+                <div className={`text-[10px] mt-1 flex items-center gap-1 ${isMe ? 'text-pink-100' : 'text-gray-400'}`}>
+                  {formatTime(msg.timestamp)}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input Area */}
+      <div className="bg-white p-3 border-t border-gray-100">
+        <form onSubmit={handleSend} className="flex items-center gap-2 bg-gray-50 p-2 rounded-full border border-gray-200 focus-within:ring-2 focus-within:ring-pink-200 transition-all">
+          <div className="pl-2">
+             <Smile className="w-6 h-6 text-gray-400 hover:text-pink-400 cursor-pointer transition-colors" />
+          </div>
+          <input
+            type="text"
+            className="flex-1 bg-transparent border-none focus:ring-0 text-gray-700 placeholder-gray-400"
+            placeholder="Type a message..."
+            value={inputText}
+            onChange={(e) => setInputText(e.target.value)}
+          />
+          <button 
+            type="submit" 
+            disabled={!inputText.trim()}
+            className="bg-pink-500 hover:bg-pink-600 disabled:bg-gray-300 text-white p-2.5 rounded-full transition-all shadow-md transform active:scale-95"
+          >
+            <Send className="w-5 h-5 ml-0.5" />
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
