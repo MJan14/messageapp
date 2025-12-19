@@ -28,7 +28,7 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* NATIVE APP FEEL CSS - FIXED FOR MOBILE REACTIONS */
+        /* NATIVE APP FEEL CSS */
         * {
             -webkit-tap-highlight-color: transparent; /* No blue tap box */
             -webkit-touch-callout: none; /* DISALBE iOS LONG PRESS MENU */
@@ -87,7 +87,7 @@
             background: rgba(15, 23, 42, 0.95);
         }
         
-        /* Focused message style during long press */
+        /* Focused message style during interaction */
         .message-focused {
             transform: scale(0.98);
             filter: brightness(0.95);
@@ -370,14 +370,13 @@
             username: localStorage.getItem('chat_username') || '',
             avatar: localStorage.getItem('chat_avatar') || null,
             replyingTo: null,
-            editingMsgId: null, // Track editing state
-            searchQuery: '', // Track search
+            editingMsgId: null, 
+            searchQuery: '', 
             typingTimer: null,
             mediaRecorder: null,
             audioChunks: [],
             pinnedMsgId: null,
-            longPressTimer: null,
-            allMessages: [] // Store all msgs for searching
+            allMessages: [] 
         };
 
         let isFirstRender = true;
@@ -549,12 +548,8 @@
             els.activeCountdown.classList.remove('hidden');
             els.cdTitleDisplay.textContent = data.title;
             const target = new Date(data.date).getTime();
-            
-            // Clear existing interval if any (not implemented for simplicity, just overwrite)
-            if (state.cdInterval) clearInterval(state.cdInterval);
-            
             calcTime();
-            state.cdInterval = setInterval(calcTime, 60000);
+            setInterval(calcTime, 60000);
             function calcTime() {
                 const now = new Date().getTime();
                 const diff = target - now;
@@ -566,7 +561,6 @@
             }
         }
 
-        // Together Since Logic
         els.saveTogetherBtn.addEventListener('click', async () => {
             const date = els.togetherInput.value;
             if (!date) return;
@@ -584,7 +578,7 @@
             const start = new Date(data.date);
             
             calcTogether();
-            state.togetherInterval = setInterval(calcTogether, 60000); // Update every minute
+            state.togetherInterval = setInterval(calcTogether, 60000);
 
             function calcTogether() {
                 const now = new Date();
@@ -594,7 +588,6 @@
 
                 if (days < 0) {
                     months--;
-                    // Get days in previous month
                     const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
                     days += prevMonth;
                 }
@@ -612,7 +605,6 @@
             }
         }
 
-        // --- SEARCH LOGIC ---
         els.searchToggle.addEventListener('click', () => {
             els.searchContainer.classList.remove('hidden');
             els.searchInput.focus();
@@ -622,7 +614,7 @@
             els.searchContainer.classList.add('hidden');
             state.searchQuery = '';
             els.searchInput.value = '';
-            renderMessages(state.allMessages); // Restore all
+            renderMessages(state.allMessages);
         });
 
         els.searchInput.addEventListener('input', (e) => {
@@ -634,17 +626,15 @@
             renderMessages(filtered);
         });
 
-        // --- MESSAGING LOGIC ---
         function startMessageListener() {
             const q = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
             onSnapshot(q, (snapshot) => {
                 els.errorBanner.classList.add('hidden');
                 const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
                 
-                state.allMessages = msgs; // Store for search
+                state.allMessages = msgs;
 
-                // Logic for new messages
-                if (!isFirstRender && !state.searchQuery) { // Don't notify if searching or first load
+                if (!isFirstRender && !state.searchQuery) {
                     snapshot.docChanges().forEach((change) => {
                         if (change.type === 'added') {
                             const data = change.doc.data();
@@ -661,7 +651,6 @@
                     });
                 }
                 
-                // If searching, filter again with new data
                 if (state.searchQuery) {
                     const filtered = msgs.filter(msg => msg.text && msg.text.toLowerCase().includes(state.searchQuery));
                     renderMessages(filtered);
@@ -683,7 +672,6 @@
                 const date = new Date(msg.timestamp);
                 const dayStr = date.toLocaleDateString();
                 
-                // Date Separator
                 if (dayStr !== lastDate) {
                     let label = dayStr;
                     const today = new Date().toLocaleDateString();
@@ -791,29 +779,6 @@
                     els.msgContainer.scrollTop = els.msgContainer.scrollHeight;
                 }
             }
-            
-            document.querySelectorAll('.message-bubble').forEach(el => {
-                el.addEventListener('mousedown', handleStartPress);
-                el.addEventListener('touchstart', handleStartPress);
-                el.addEventListener('mouseup', handleEndPress);
-                el.addEventListener('touchend', handleEndPress);
-                el.addEventListener('mouseleave', handleEndPress);
-                el.addEventListener('touchmove', handleEndPress);
-            });
-        }
-
-        // --- LONG PRESS LOGIC ---
-        function handleStartPress(e) {
-            state.longPressTimer = setTimeout(() => {
-                showMenu(e.target.closest('.message-bubble-container'));
-            }, 500); 
-        }
-
-        function handleEndPress(e) {
-            if (state.longPressTimer) {
-                clearTimeout(state.longPressTimer);
-                state.longPressTimer = null;
-            }
         }
 
         function showMenu(container) {
@@ -865,6 +830,14 @@
         // ACTIONS (Edit, Delete, Copy, Etc)
         els.msgList.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
+            
+            // NEW: Handle bubble tap to show menu
+            const bubble = e.target.closest('.message-bubble');
+            if (bubble && !btn) {
+                showMenu(bubble.closest('.message-bubble-container'));
+                return;
+            }
+
             if (!btn) return;
             const action = btn.dataset.action;
             
