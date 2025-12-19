@@ -28,14 +28,18 @@
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        /* NATIVE APP FEEL CSS */
+        /* NATIVE APP FEEL CSS - FIXED FOR MOBILE REACTIONS */
         * {
             -webkit-tap-highlight-color: transparent; /* No blue tap box */
-            user-select: none; /* Prevent text selection on UI */
+            -webkit-touch-callout: none; /* DISALBE iOS LONG PRESS MENU */
+            user-select: none; /* Prevent text selection generally */
         }
         
-        /* Allow text selection only in messages and inputs */
-        .selectable, input { user-select: text; }
+        /* Allow selection ONLY in inputs */
+        input, textarea { 
+            user-select: text; 
+            -webkit-user-select: text;
+        }
 
         body { 
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -82,11 +86,12 @@
         .dark .glass-header {
             background: rgba(15, 23, 42, 0.95);
         }
-
-        /* High z-index for focused message */
+        
+        /* Focused message style during long press */
         .message-focused {
-            z-index: 60 !important;
-            position: relative;
+            transform: scale(0.98);
+            filter: brightness(0.95);
+            transition: all 0.2s ease;
         }
     </style>
 </head>
@@ -101,7 +106,6 @@
     </div>
 
     <!-- OVERLAY (For closing menus) -->
-    <!-- Removed backdrop-blur to prevent blurriness issue -->
     <div id="menu-overlay" class="hidden fixed inset-0 z-[45] bg-black/20 transition-opacity"></div>
 
     <!-- MOMENTS/DATES MODAL -->
@@ -524,9 +528,11 @@
             }
         });
 
+        // --- MOMENTS MODAL ---
         els.countdownBtn.addEventListener('click', () => els.countdownModal.classList.remove('hidden'));
         els.closeCountdown.addEventListener('click', () => els.countdownModal.classList.add('hidden'));
 
+        // Countdown Logic
         els.countdownForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const title = document.getElementById('countdown-title-input').value;
@@ -543,8 +549,12 @@
             els.activeCountdown.classList.remove('hidden');
             els.cdTitleDisplay.textContent = data.title;
             const target = new Date(data.date).getTime();
+            
+            // Clear existing interval if any (not implemented for simplicity, just overwrite)
+            if (state.cdInterval) clearInterval(state.cdInterval);
+            
             calcTime();
-            setInterval(calcTime, 60000);
+            state.cdInterval = setInterval(calcTime, 60000);
             function calcTime() {
                 const now = new Date().getTime();
                 const diff = target - now;
@@ -556,6 +566,7 @@
             }
         }
 
+        // Together Since Logic
         els.saveTogetherBtn.addEventListener('click', async () => {
             const date = els.togetherInput.value;
             if (!date) return;
@@ -573,7 +584,7 @@
             const start = new Date(data.date);
             
             calcTogether();
-            state.togetherInterval = setInterval(calcTogether, 60000);
+            state.togetherInterval = setInterval(calcTogether, 60000); // Update every minute
 
             function calcTogether() {
                 const now = new Date();
@@ -583,6 +594,7 @@
 
                 if (days < 0) {
                     months--;
+                    // Get days in previous month
                     const prevMonth = new Date(now.getFullYear(), now.getMonth(), 0).getDate();
                     days += prevMonth;
                 }
@@ -600,6 +612,7 @@
             }
         }
 
+        // --- SEARCH LOGIC ---
         els.searchToggle.addEventListener('click', () => {
             els.searchContainer.classList.remove('hidden');
             els.searchInput.focus();
@@ -609,7 +622,7 @@
             els.searchContainer.classList.add('hidden');
             state.searchQuery = '';
             els.searchInput.value = '';
-            renderMessages(state.allMessages);
+            renderMessages(state.allMessages); // Restore all
         });
 
         els.searchInput.addEventListener('input', (e) => {
@@ -621,15 +634,17 @@
             renderMessages(filtered);
         });
 
+        // --- MESSAGING LOGIC ---
         function startMessageListener() {
             const q = collection(db, 'artifacts', appId, 'public', 'data', 'chat_messages');
             onSnapshot(q, (snapshot) => {
                 els.errorBanner.classList.add('hidden');
                 const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
                 
-                state.allMessages = msgs;
+                state.allMessages = msgs; // Store for search
 
-                if (!isFirstRender && !state.searchQuery) {
+                // Logic for new messages
+                if (!isFirstRender && !state.searchQuery) { // Don't notify if searching or first load
                     snapshot.docChanges().forEach((change) => {
                         if (change.type === 'added') {
                             const data = change.doc.data();
@@ -646,6 +661,7 @@
                     });
                 }
                 
+                // If searching, filter again with new data
                 if (state.searchQuery) {
                     const filtered = msgs.filter(msg => msg.text && msg.text.toLowerCase().includes(state.searchQuery));
                     renderMessages(filtered);
@@ -667,6 +683,7 @@
                 const date = new Date(msg.timestamp);
                 const dayStr = date.toLocaleDateString();
                 
+                // Date Separator
                 if (dayStr !== lastDate) {
                     let label = dayStr;
                     const today = new Date().toLocaleDateString();
@@ -845,6 +862,7 @@
             setTimeout(() => heart.remove(), 1000);
         }
 
+        // ACTIONS (Edit, Delete, Copy, Etc)
         els.msgList.addEventListener('click', (e) => {
             const btn = e.target.closest('button');
             if (!btn) return;
